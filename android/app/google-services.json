@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "633995598896",
+    "project_id": "alhusnain-motors-customer",
+    "storage_bucket": "alhusnain-motors-customer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633995598896:android:750c5c02f7fb7d9f80a1f5",
+        "android_client_info": {
+          "package_name": "com.alhusnain.ah_customer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "633995598896-asevjvo8aitml0ibktiitu00eugjh1np.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alhusnain.ah_customer",
+            "certificate_hash": "b12dded3a84632f08acfc75ec2c0579a50db09c7"
+          }
+        },
+        {
+          "client_id": "633995598896-84b63sv4peo64adhq5gj5fev35k8h60d.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJBDWr2WeTFYyDlEjHF8lzEHP_OngiZFY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "633995598896-84b63sv4peo64adhq5gj5fev35k8h60d.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
