@@ -6,26 +6,40 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'VehicleDetailsScreen.dart';
+import 'config.dart';
 import 'home_screen.dart'; // Import for `firstWhereOrNull`
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SearchMetadata {
   final int nbHits;
-
   const SearchMetadata(this.nbHits);
-
-  factory SearchMetadata.fromResponse(SearchResponse response) =>
-      SearchMetadata(response.nbHits);
+  factory SearchMetadata.fromResponse(SearchResponse response) => SearchMetadata(response.nbHits);
 }
 
 class VehicleSearchPage extends StatefulWidget {
   final CarLayout carLayout;
   final VoidCallback onToggleLayout;
   final String? selectedBrand;
+  final String? selectedModel;
+  final String? selectedColor;
+  final String? selectedYear;
+  final String? selectedBodytype;
+  final String? selectedFuel;
+  final String? selectedDrive;
+  final String? selectedTrasmission;
+  final String? selectedFeatures;
 
   const VehicleSearchPage({
     Key? key,
     this.selectedBrand,
+    this.selectedModel,
+    this.selectedColor,
+    this.selectedYear,
+    this.selectedBodytype,
+    this.selectedFuel,
+    this.selectedDrive,
+    this.selectedTrasmission,
+    this.selectedFeatures,
     required this.carLayout,
     required this.onToggleLayout,
   }) : super(key: key);
@@ -38,54 +52,120 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   Timer? _debounce;
-  final Map<String, List<Hit>> _cache = {};
   static const int _pageSize = 8;
 
-  // Algolia Searcher Configuration
+  // Algolia Configuration
   final HitsSearcher _productsSearcher = HitsSearcher(
-    applicationID: 'R93EVX2DVK',
-    apiKey: '757b56318f855a2589d80754d66d9183',
-    indexName: 'vehicles_index',
+    applicationID: AlgoliaConfig.applicationId,
+    apiKey: AlgoliaConfig.apiKey,
+    indexName: AlgoliaConfig.indexName,
   );
-
-  Stream<SearchMetadata> get _searchMetadata =>
-      _productsSearcher.responses.map(SearchMetadata.fromResponse);
 
   final GlobalKey<ScaffoldState> _mainScaffoldKey = GlobalKey();
-
   final _filterState = FilterState();
-  final PagingController<int, Hit> _pagingController =
-  PagingController(firstPageKey: 0);
+  final PagingController<int, Hit> _pagingController = PagingController(firstPageKey: 0);
 
-  late final _makeFacetList = _productsSearcher.buildFacetList(
-    filterState: _filterState,
-    attribute: 'make',
-  );
+  // Facet Lists
+  late final FacetList _makeFacetList = _createFacetList('make');
+  late final FacetList _modelFacetList = _createFacetList('model');
+  late final FacetList _colorFacetList = _createFacetList('colour');
+  late final FacetList _yrFacetList = _createFacetList('yr_of_mfg');
+  late final FacetList _bodytypeFacetList = _createFacetList('body_type');
+  late final FacetList _fuelFacetList = _createFacetList('fuel');
+  late final FacetList _driveFacetList = _createFacetList('drive');
+  late final FacetList _trasmissionFacetList = _createFacetList('transm');
+  late final FacetList _featuresFacetList = _createFacetList('features');
 
-  late final _modelFacetList = _productsSearcher.buildFacetList(
-    filterState: _filterState,
-    attribute: 'model',
-  );
+  FacetList _createFacetList(String attribute) {
+    return _productsSearcher.buildFacetList(
+      filterState: _filterState,
+      attribute: attribute,
+    );
+  }
 
-  late final _colorFacetList = _productsSearcher.buildFacetList(
-    filterState: _filterState,
-    attribute: 'colour',
-  );
+  @override
+  void initState() {
+    super.initState();
+    _productsSearcher.responses.listen((response) {
+      if (mounted) setState(() {});
+    });
 
+    _productsSearcher.connectFilterState(_filterState);
+    _pagingController.addPageRequestListener(_fetchPage);
+
+    // Apply initial filters after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyInitialFilters());
+  }
+
+  void _applyInitialFilters() {
+    _toggleIfNotNull(_makeFacetList, widget.selectedBrand);
+    _toggleIfNotNull(_modelFacetList, widget.selectedModel);
+    _toggleIfNotNull(_colorFacetList, widget.selectedColor);
+    _toggleIfNotNull(_yrFacetList, widget.selectedYear);
+    _toggleIfNotNull(_bodytypeFacetList, widget.selectedBodytype);
+    _toggleIfNotNull(_fuelFacetList, widget.selectedFuel);
+    _toggleIfNotNull(_driveFacetList, widget.selectedDrive);
+    _toggleIfNotNull(_trasmissionFacetList, widget.selectedTrasmission);
+    _toggleIfNotNull(_featuresFacetList, widget.selectedFeatures);
+  }
+
+  void _toggleIfNotNull(FacetList facetList, String? value) {
+    if (value != null && value.isNotEmpty) {
+      facetList.toggle(value);
+    }
+  }
+
+  Future<void> _fetchPage(int pageKey) async {
+    try {
+      _productsSearcher.applyState((state) => state.copyWith(
+        query: _controller.text.trim(),
+        page: pageKey,
+        hitsPerPage: _pageSize,
+      ));
+
+      final response = await _productsSearcher.responses.first;
+      final isLastPage = response.hits.length < _pageSize;
+
+      isLastPage
+          ? _pagingController.appendLastPage(response.hits)
+          : _pagingController.appendPage(response.hits, pageKey + 1);
+    } catch (error) {
+      _pagingController.error = error;
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (value.isEmpty) _filterState.clear();
+      _pagingController.refresh();
+    });
+  }
+
+  // Filter UI Components
   Widget _filters(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Filters'),
-    ),
+    appBar: AppBar(title: const Text('Filters')),
     body: Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildFacetDropdown('Make', _makeFacetList),
           const SizedBox(height: 16),
           _buildFacetDropdown('Model', _modelFacetList),
           const SizedBox(height: 16),
           _buildFacetDropdown('Colour', _colorFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Year', _yrFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Body type', _bodytypeFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Fuel', _fuelFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Drive', _driveFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Transmission', _trasmissionFacetList),
+          const SizedBox(height: 16),
+          _buildFacetDropdown('Features', _featuresFacetList),
         ],
       ),
     ),
@@ -95,174 +175,42 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     return StreamBuilder<List<SelectableFacet>>(
       stream: facetList.facets,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const LinearProgressIndicator();
-        }
-
-        final facets = snapshot.data ?? [];
-        if (facets.isEmpty) {
-          return Text(
-            '$title: No options available',
-            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-          );
-        }
-
-        // Get selected facet value
-        String? selectedValue = facets.firstWhereOrNull((f) => f.isSelected)?.item.value;
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        final facets = snapshot.data!;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                value: selectedValue,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-                hint: Text('Select $title', style: TextStyle(color: Colors.grey[600])),
-                items: facets.map((selectable) {
-                  final facet = selectable.item;
-                  return DropdownMenuItem(
-                    value: facet.value,
-                    child: Text('${facet.value}'),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    // Clear previous selections
-                    for (var f in facets.where((f) => f.isSelected)) {
-                      facetList.toggle(f.item.value);
-                    }
-
-                    // Select new value
-                    facetList.toggle(value);
-
-                    // Refresh the page and fetch new results
-                    setState(() {
-                      _pagingController.refresh();
-                      _fetchPage(0);
-                    });
-                  }
-                },
-              ),
+            _FacetDropdown(
+              facets: facets,
+              title: title,
+              onChanged: (value) => _handleFacetSelection(facetList, facets, value),
+              onClear: () => _clearFacetSelection(facetList, facets),
             ),
-            if (selectedValue != null) // Show button only if a filter is selected
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.clear, size: 20),
-                  label: const Text("Clear Selection"),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () {
-                    for (var f in facets.where((f) => f.isSelected)) {
-                      facetList.toggle(f.item.value);
-                    }
-                    setState(() {
-                      _pagingController.refresh();
-                      _fetchPage(0);
-                    });
-                  },
-                ),
-              ),
           ],
         );
       },
     );
   }
 
+  void _handleFacetSelection(FacetList facetList, List<SelectableFacet> facets, String? value) {
+    if (value == null) return;
 
-
-  @override
-  void initState() {
-    super.initState();
-
-    _productsSearcher.responses.listen((response) {
-      if (response != null && mounted) setState(() {});
-    });
-    _productsSearcher.connectFilterState(_filterState);
-    _pagingController.addPageRequestListener((pageKey) {
-      _fetchPage(pageKey);
-    });
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    _focusNode.dispose();
-    _productsSearcher.dispose();
-    _filterState.dispose();
-    _makeFacetList.dispose();
-    _modelFacetList.dispose();
-    _colorFacetList.dispose();
-    _pagingController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _fetchPage(int pageKey) async {
-    try {
-
-      // 🔹 Check internet connection
-      List<ConnectivityResult> connectivityResult = await Connectivity().checkConnectivity();
-      bool isOffline = connectivityResult.isNotEmpty && connectivityResult.first == ConnectivityResult.none;
-
-      if (isOffline) {
-        _pagingController.error = 'No internet connection. Please check your connection and try again.';
-        return;
-      }
-      // Construct search query: Prefer selectedBrand (from CarChooser), else use user input
-      String searchQuery = widget.selectedBrand?.trim().isNotEmpty == true
-          ? widget.selectedBrand!
-          : _controller.text;
-
-      // Apply the search query
-      _productsSearcher.applyState(
-            (state) => state.copyWith(
-          query: searchQuery,
-          page: pageKey,
-          hitsPerPage: _pageSize,
-        ),
-      );
-
-      // Fetch the response
-      final response = await _productsSearcher.responses.first;
-
-      final newItems = response.hits;
-      final isLastPage = newItems.length < _pageSize;
-
-      if (isLastPage) {
-        _pagingController.appendLastPage(newItems);
-      } else {
-        final nextPageKey = pageKey + 1;
-        _pagingController.appendPage(newItems, nextPageKey);
-      }
-    } catch (error) {
-      _pagingController.error = error;
+    for (var f in facets.where((f) => f.isSelected)) {
+      facetList.toggle(f.item.value);
     }
+
+    facetList.toggle(value);
+    _pagingController.refresh();
   }
 
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 2), () {
-      _pagingController.refresh();
-      _productsSearcher.applyState((state) => state.copyWith(query: value));
-    });
+  void _clearFacetSelection(FacetList facetList, List<SelectableFacet> facets) {
+    for (var f in facets.where((f) => f.isSelected)) {
+      facetList.toggle(f.item.value);
+    }
+    _pagingController.refresh();
   }
 
   Widget _buildSearchField() {
@@ -279,6 +227,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
             onPressed: () {
               _controller.clear();
               _onSearchChanged('');
+
             },
           ),
           border: OutlineInputBorder(
@@ -373,7 +322,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-
   Widget _buildResultsGrid() {
     return PagedGridView<int, Hit>(
       pagingController: _pagingController,
@@ -392,7 +340,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       ),
     );
   }
-
 
   Widget _buildResultsList() {
     return PagedListView<int, Hit>(
@@ -551,7 +498,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -636,7 +582,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -648,6 +593,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
           IconButton(
             onPressed: () => _mainScaffoldKey.currentState?.openEndDrawer(),
             icon: const Icon(Icons.filter_list_sharp),
+            tooltip: 'Filters',
           ),
         ],
       ),
@@ -685,8 +631,75 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-}
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    _focusNode.dispose();
+    _productsSearcher.dispose();
+    _filterState.dispose();
+    [_makeFacetList, _modelFacetList, _colorFacetList, _yrFacetList, _bodytypeFacetList]
+        .forEach((f) => f.dispose());
+    _pagingController.dispose();
+    super.dispose();
+  }
 
+}
+class _FacetDropdown extends StatelessWidget {
+  final List<SelectableFacet> facets;
+  final String title;
+  final ValueChanged<String?> onChanged;
+  final VoidCallback onClear;
+
+  const _FacetDropdown({
+    required this.facets,
+    required this.title,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedValue = facets.firstWhereOrNull((f) => f.isSelected)?.item.value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+          ),
+          child: DropdownButtonFormField<String>(
+            isExpanded: true,
+            value: selectedValue,
+            items: facets.map((f) => DropdownMenuItem(
+              value: f.item.value,
+              child: Text(f.item.value),
+            )).toList(),
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              contentPadding: EdgeInsets.symmetric(vertical: 12),
+              hintText: 'Select $title',
+            ),
+          ),
+        ),
+        if (selectedValue != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              icon: Icon(Icons.clear, size: 20),
+              label: Text("Clear Selection"),
+              onPressed: onClear,
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: BorderSide(color: Colors.red)),
+            ),
+          ),
+      ],
+    );
+  }
+}
 extension _FirstWhereOrNullExtension<T> on List<T> {
   T? firstWhereOrNull(bool Function(T element) test) {
     for (var element in this) {

@@ -2,6 +2,7 @@ import 'package:ah_customer/screens/profile_screen.dart';
 import 'package:ah_customer/screens/search_screen.dart';
 import 'package:flutter/material.dart';
 import 'car_chooser.dart';
+import 'filters_screen.dart';
 import 'home_contents.dart';
 import 'wishlist_screen.dart';
 
@@ -32,57 +33,56 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _showVehicleDialog() {
+  void _showVehicleDialog() async {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(
-            "Find Your Vehicle",
-            textAlign: TextAlign.center,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center, // Ensures center alignment
-            children: [
-              Text(
-                "Would you like to use the Car Chooser or proceed directly to search?",
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center, // Centers the buttons
+          title: const Text("Find Your Vehicle", textAlign: TextAlign.center),
+          content: const Text("Would you like to use the Car Chooser or proceed directly to search?", textAlign: TextAlign.center),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
-            Center(
-              child: Column(
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context); // Close dialog
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => CarChooserScreen()),
-                      );
-                    },
-                    child: Text("Use Car Chooser"),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context); // Close dialog
-                      setState(() {
-                        _selectedIndex = 1;
-                      });
-                    },
-                    child: Text("Proceed to Search"),
-                  ),
-                ],
-              ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => CarChooserScreen()));
+              },
+              child: const Text("Use Car Chooser"),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+
+                // Open FiltersScreen and wait for the selected filters
+                final filters = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => FiltersScreen(carLayout: _carLayout, onToggleLayout: _toggleLayout)),
+                );
+
+                if (filters != null) {
+                  // Navigate to Search Page with selected filters
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VehicleSearchPage(
+                        selectedBrand: filters['selectedBrand'],
+                        selectedModel: filters['selectedModel'],
+                        selectedColor: filters['selectedColor'],
+                        carLayout: _carLayout,
+                        onToggleLayout: _toggleLayout,
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Proceed to Search"),
             ),
           ],
         );
       },
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
