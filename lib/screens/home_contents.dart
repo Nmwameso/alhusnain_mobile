@@ -9,10 +9,11 @@ import '../providers/home_provider.dart';
 import '../models/vehicle.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../widgets/FavoriteIcon.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'VehicleDetailsScreen.dart';
-
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 
 class HomeContents extends StatelessWidget {
@@ -51,47 +52,66 @@ class HomeContents extends StatelessWidget {
   }
 
   Widget _buildError(BuildContext context, String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              'Connection Error',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.red,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => context.read<HomeProvider>().fetchHomeData(),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+    return FutureBuilder<List<ConnectivityResult>>(
+      future: Connectivity().checkConnectivity(),
+      builder: (context, snapshot) {
+        bool isOffline = snapshot.hasData &&
+            snapshot.data!.isNotEmpty &&
+            snapshot.data!.first == ConnectivityResult.none;
+
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isOffline ? Icons.wifi_off : Icons.error_outline,
+                  size: 48,
+                  color: Colors.red,
                 ),
-              ),
-              icon: const Icon(Icons.refresh, size: 20),
-              label: const Text('Try Again'),
+                const SizedBox(height: 16),
+                Text(
+                  isOffline ? 'No Internet Connection' : 'Connection Error',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isOffline
+                      ? 'Please check your internet connection and try again.'
+                      : error,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: isOffline
+                      ? null
+                      : () => context.read<HomeProvider>().fetchHomeData(),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    backgroundColor: isOffline
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh, size: 20),
+                  label: const Text('Try Again'),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -99,6 +119,7 @@ class HomeContents extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildBrands(data.brandsWithSearch)),
+
         SliverPadding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           sliver: SliverToBoxAdapter(
@@ -106,6 +127,7 @@ class HomeContents extends StatelessWidget {
           ),
         ),
         _buildCarGrid(data.latestCars),
+
         SliverPadding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           sliver: SliverToBoxAdapter(
@@ -116,6 +138,7 @@ class HomeContents extends StatelessWidget {
       ],
     );
   }
+
 
   Widget _buildSectionTitle(String title) {
     return Padding(
@@ -303,6 +326,11 @@ class HomeContents extends StatelessWidget {
                     ),
                   ),
                   Positioned(
+                    top: 8,
+                    right: 8,
+                    child: FavoriteIcon(vehicleId: car.vehicleId),
+                  ),
+                  Positioned(
                     bottom: 0,
                     left: 0,
                     right: 0,
@@ -431,6 +459,11 @@ class HomeContents extends StatelessWidget {
                               ],
                             ),
                           ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: FavoriteIcon(vehicleId: car.vehicleId),
                         ),
                         Positioned(
                           bottom: 0,

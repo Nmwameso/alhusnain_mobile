@@ -1,9 +1,9 @@
+import 'package:ah_customer/screens/profile_screen.dart';
 import 'package:ah_customer/screens/search_screen.dart';
 import 'package:flutter/material.dart';
 import 'car_chooser.dart';
 import 'home_contents.dart';
 import 'wishlist_screen.dart';
-import 'contact_screen.dart';
 
 enum CarLayout { grid, list }
 
@@ -90,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
       HomeContents(carLayout: _carLayout, onToggleLayout: _toggleLayout),
       VehicleSearchPage(carLayout: _carLayout, onToggleLayout: _toggleLayout),
       WishlistScreen(),
-      ContactScreen(),
+      ProfileScreen(),
     ];
 
     return Scaffold(
@@ -131,9 +131,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Wishlist',
           ),
           NavigationDestination(
-            icon: Icon(Icons.contact_mail_outlined, size: 28),
-            selectedIcon: Icon(Icons.contact_mail, size: 28),
-            label: 'Contact',
+            icon: Icon(Icons.person_outline, size: 28), // ✅ Changed to Profile Icon
+            selectedIcon: Icon(Icons.person, size: 28), // ✅ Active Profile Icon
+            label: 'Profile', // ✅ Changed label from Contact to Profile
           ),
         ],
       ),

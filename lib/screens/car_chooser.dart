@@ -41,7 +41,7 @@ class _CarChooserScreenState extends State<CarChooserScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => VehicleSearchPage(
-          carLayout: CarLayout.list,
+          carLayout: CarLayout.grid,
           onToggleLayout: () {},
           selectedBrand: query, // ✅ Pass the selection (Category + FuelType if available)
         ),
@@ -68,9 +68,9 @@ class _CarChooserScreenState extends State<CarChooserScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 40, color: isSelected ? Colors.blue : Colors.black54),
+                Icon(icon, size: 40, color: isSelected ? Colors.blue : Colors.white),
                 SizedBox(height: 12),
-                Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
               ],
             ),
           ),
@@ -124,11 +124,11 @@ class _CarChooserScreenState extends State<CarChooserScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("1. Select Your Car Type", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text("1. What are you using the car for ?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             SizedBox(height: 10),
             _buildSelectionGrid("Choose a Category:", categories, selectedCategory, (val) => selectedCategory = val),
             SizedBox(height: 16),
-            Text("2. Choose Fuel Type", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text("2. What's your preferred fuel type ?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             SizedBox(height: 10),
             _buildSelectionGrid("Select Fuel Type:", fuelTypes, selectedFuelType, (val) => selectedFuelType = val),
             SizedBox(height: 16),

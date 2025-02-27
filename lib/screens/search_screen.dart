@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'VehicleDetailsScreen.dart';
 import 'home_screen.dart'; // Import for `firstWhereOrNull`
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SearchMetadata {
   final int nbHits;
@@ -216,6 +217,15 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
   Future<void> _fetchPage(int pageKey) async {
     try {
+
+      // 🔹 Check internet connection
+      List<ConnectivityResult> connectivityResult = await Connectivity().checkConnectivity();
+      bool isOffline = connectivityResult.isNotEmpty && connectivityResult.first == ConnectivityResult.none;
+
+      if (isOffline) {
+        _pagingController.error = 'No internet connection. Please check your connection and try again.';
+        return;
+      }
       // Construct search query: Prefer selectedBrand (from CarChooser), else use user input
       String searchQuery = widget.selectedBrand?.trim().isNotEmpty == true
           ? widget.selectedBrand!
@@ -246,7 +256,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       _pagingController.error = error;
     }
   }
-
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
@@ -287,7 +296,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
   Widget _buildHorizontalCarCard(Hit vehicle) {
     return Card(
-       //
+      //
       elevation: 3,
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -427,7 +436,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
                       imageUrl: vehicle['main_photo'] ?? '',
                       fit: BoxFit.cover,
                       width: double.infinity,
-                      height: 90, // ✅ Fixed height
+                      height: 95, // ✅ Fixed height
                       placeholder: (context, url) => Shimmer.fromColors(
                         baseColor: Colors.grey[300]!,
                         highlightColor: Colors.grey[100]!,
@@ -560,35 +569,86 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-  Widget _buildErrorState(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-          SizedBox(height: 16),
-          Text('Search Error',
-              style: TextStyle(fontSize: 18, color: Colors.red[600])),
-          SizedBox(height: 8),
-          Text(error,
-              style: TextStyle(color: Colors.grey[600]),
-              textAlign: TextAlign.center),
-        ],
-      ),
+  Widget _buildErrorState(BuildContext context, String error) {
+    return FutureBuilder<List<ConnectivityResult>>(
+      future: Connectivity().checkConnectivity(),
+      builder: (context, snapshot) {
+        bool isOffline = snapshot.hasData &&
+            snapshot.data!.isNotEmpty &&
+            snapshot.data!.first == ConnectivityResult.none;
+
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isOffline ? Icons.wifi_off : Icons.error_outline,
+                  size: 48,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  isOffline ? 'No Internet Connection' : 'Connection Error',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isOffline
+                      ? 'Please check your internet connection and try again.'
+                      : error,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: isOffline
+                      ? null
+                      : () {
+                    _pagingController.refresh();
+                    _fetchPage(0);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    backgroundColor: isOffline
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh, size: 20),
+                  label: const Text('Try Again'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _mainScaffoldKey,
       appBar: AppBar(
-        title: Text('Vehicle Search'),
+        title: const Text('Vehicle Search'),
         elevation: 0,
         actions: [
           IconButton(
-              onPressed: () => _mainScaffoldKey.currentState?.openEndDrawer(),
-              icon: const Icon(Icons.filter_list_sharp))
+            onPressed: () => _mainScaffoldKey.currentState?.openEndDrawer(),
+            icon: const Icon(Icons.filter_list_sharp),
+          ),
         ],
       ),
       endDrawer: Drawer(
@@ -606,13 +666,14 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
                 }
 
                 if (snapshot.hasError) {
-                  return _buildErrorState(snapshot.error.toString());
+                  return _buildErrorState(context, snapshot.error.toString());
                 }
 
                 final results = snapshot.data?.hits ?? [];
                 if (results.isEmpty) {
                   return _buildEmptyState();
                 }
+
                 return widget.carLayout == CarLayout.grid
                     ? _buildResultsGrid()
                     : _buildResultsList();
@@ -623,6 +684,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       ),
     );
   }
+
 }
 
 extension _FirstWhereOrNullExtension<T> on List<T> {

@@ -7,9 +7,14 @@ import 'package:shimmer/shimmer.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../models/vehicle.dart';
 import '../models/vehicle_details.dart';
 import '../services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:whatsapp_unilink/whatsapp_unilink.dart';
+import 'package:intl/intl.dart'; // For time-based greeting
+
 
 class VehicleDetailsScreen extends StatefulWidget {
   final String vehicleId;
@@ -64,7 +69,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                       _buildDivider(),
                       const SizedBox(height: 24),
                       _buildFeatureSection(features),
-                      const SizedBox(height: 24),
                       _buildRelatedVehiclesSection(snapshot.data!.relatedByBrand, snapshot.data!.relatedByColor, snapshot.data!.vehicle),
 
                     ],
@@ -93,8 +97,57 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
             }
           },
           child: const Icon(Icons.share),
-          backgroundColor: Theme.of(context).colorScheme.primary,
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white, // Icon color
         ),
+        const SizedBox(height: 10),
+        FloatingActionButton(
+          heroTag: 'whatsappButton',
+          onPressed: () async {
+            final vehicle = await _vehicleDetails;
+            if (vehicle.vehicle != null) {
+              final v = vehicle.vehicle!;
+
+              // Get current hour
+              int hour = DateTime.now().hour;
+              String greeting;
+
+              if (hour < 12) {
+                greeting = "Good morning";
+              } else if (hour < 18) {
+                greeting = "Good afternoon";
+              } else {
+                greeting = "Good evening";
+              }
+
+              final String vehicleText = ''' 
+              🚗 *$greeting, I'm interested in this vehicle ${v.yrOfMfg.substring(0, 4)} ${v.makeName} ${v.modelName}!*  
+              
+              ⚙️ *Stock ID:* ${v.stockID}  
+              🛞 *Trans:* ${v.transm}  
+              ⛽ *Fuel Type:* ${v.fuel}  
+              ⚙️ *Drive Type:* ${v.drive}  
+              🏎 *Engine:* ${v.engineCc} CC  
+              🎨 *Color:* ${v.colour}  
+              📍 *Location:* ${v.locationName}  
+                    ''';
+
+              final link = WhatsAppUnilink(
+                phoneNumber: "+254748222222", // Ensure it's in international format
+                text: vehicleText,
+              );
+
+              // Fix: Use launchUrlString instead of launchUrl()
+              if (!await launchUrlString(link.toString(), mode: LaunchMode.externalApplication)) {
+                throw 'Could not launch WhatsApp';
+              }
+            }
+          },
+          child: const Icon(Icons.chat),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+
       ],
     );
   }
@@ -112,14 +165,26 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Downloading images...'),
-              ],
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Downloading images...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -390,7 +455,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (relatedByColor.isNotEmpty) ...[
-          const SizedBox(height: 24),
+
           Text(
             'Other ${vehicle.makeName} ${vehicle.modelName} colours',
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -470,7 +535,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           _buildCompactInfoRow('StockID', car.stockID),
                           _buildCompactInfoRow('Year', '${car.yrOfMfg.substring(0, 4)}'),
                           _buildCompactInfoRow('Fuel', car.fuel),

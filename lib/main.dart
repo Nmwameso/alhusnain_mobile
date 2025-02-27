@@ -4,12 +4,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ah_customer/providers/auth_provider.dart';
 import 'package:ah_customer/providers/home_provider.dart';
+import 'package:ah_customer/providers/connectivity_provider.dart';
 import 'package:ah_customer/screens/home_screen.dart';
+import 'package:ah_customer/screens/login_screen.dart';
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
+  await Firebase.initializeApp(); // ✅ Initialize Firebase before runApp()
 
   runApp(MyApp());
 }
@@ -21,6 +23,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProvider(create: (context) => HomeProvider()..fetchHomeData()),
+        ChangeNotifierProvider(create: (context) => ConnectivityProvider()), // ✅ Added ConnectivityProvider
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -29,7 +32,11 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.blue,
           visualDensity: VisualDensity.adaptivePlatformDensity,
         ),
-        home: SplashScreen(),
+        home: SplashScreen(), // ✅ Now checks user login before navigating
+        routes: {
+          '/home': (context) => HomeScreen(),
+          '/login': (context) => LoginScreen(),
+        },
       ),
     );
   }
@@ -44,16 +51,21 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToHome();
+    _checkLoginStatus();
   }
 
-  /// ✅ Automatically navigates to HomeScreen after 2 seconds
-  Future<void> _navigateToHome() async {
-    await Future.delayed(Duration(seconds: 2));
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => HomeScreen()),
-    );
+  /// ✅ Checks if the user is logged in and navigates accordingly
+  Future<void> _checkLoginStatus() async {
+    await Future.delayed(Duration(seconds: 2)); // Simulating splash delay
+
+    final prefs = await SharedPreferences.getInstance();
+    bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    if (isLoggedIn) {
+      Navigator.pushReplacementNamed(context, '/home'); // ✅ Navigate to HomeScreen
+    } else {
+      Navigator.pushReplacementNamed(context, '/login'); // ✅ Navigate to LoginScreen
+    }
   }
 
   @override
