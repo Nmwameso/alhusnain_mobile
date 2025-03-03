@@ -1,4 +1,6 @@
+import 'package:ah_customer/theme/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +13,7 @@ import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // ✅ Initialize Firebase before runApp()
-
+  await Firebase.initializeApp();
   runApp(MyApp());
 }
 
@@ -23,16 +24,13 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProvider(create: (context) => HomeProvider()..fetchHomeData()),
-        ChangeNotifierProvider(create: (context) => ConnectivityProvider()), // ✅ Added ConnectivityProvider
+        ChangeNotifierProvider(create: (context) => ConnectivityProvider()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'AL-HUSNAIN Motors',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-        ),
-        home: SplashScreen(), // ✅ Now checks user login before navigating
+        theme: ThemeManager.buildIOSTheme(),
+        home: SplashScreen(),
         routes: {
           '/home': (context) => HomeScreen(),
           '/login': (context) => LoginScreen(),
@@ -54,24 +52,24 @@ class _SplashScreenState extends State<SplashScreen> {
     _checkLoginStatus();
   }
 
-  /// ✅ Checks if the user is logged in and navigates accordingly
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(Duration(seconds: 2)); // Simulating splash delay
-
+    await Future.delayed(const Duration(seconds: 2));
     final prefs = await SharedPreferences.getInstance();
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
-    if (isLoggedIn) {
-      Navigator.pushReplacementNamed(context, '/home'); // ✅ Navigate to HomeScreen
-    } else {
-      Navigator.pushReplacementNamed(context, '/login'); // ✅ Navigate to LoginScreen
-    }
+    Navigator.pushReplacementNamed(
+        context,
+        isLoggedIn ? '/home' : '/login'
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.background,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -81,33 +79,30 @@ class _SplashScreenState extends State<SplashScreen> {
               width: 200,
               height: 200,
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
               'AL-HUSNAIN MOTORS LTD',
-              style: TextStyle(
+              style: theme.textTheme.titleLarge?.copyWith(
                 fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-                letterSpacing: 1.2,
+                letterSpacing: 0.5,
+                color: colors.onBackground,
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(
                 'Welcome to Premier Destination For Quality Vehicles in Kenya',
-                style: TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
-                  color: Colors.grey[700],
-                  fontWeight: FontWeight.w500,
-                  height: 1.3,
+                  color: colors.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-            SizedBox(height: 30),
-            CircularProgressIndicator(), // ✅ Loading indicator before navigating
+            const SizedBox(height: 32),
+            const CupertinoActivityIndicator(radius: 14),
           ],
         ),
       ),

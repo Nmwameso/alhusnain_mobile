@@ -33,6 +33,14 @@ class HomeContents extends StatelessWidget {
     );
   }
 
+  void _navigateToDetails(BuildContext context, Vehicle car) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VehicleDetailsScreen(vehicleId: car.vehicleId),
+      ),
+    );
+  }
   Widget _buildLoading() {
     return ListView.builder(
       itemCount: 3,
@@ -283,14 +291,7 @@ class HomeContents extends StatelessWidget {
 
   Widget _buildCarCard(BuildContext context, Vehicle car) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VehicleDetailsScreen(vehicleId: car.vehicleId),
-          ),
-        );
-      },
+      onTap: () => _navigateToDetails(context, car),
       child: Material(
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
@@ -305,6 +306,7 @@ class HomeContents extends StatelessWidget {
                   CachedNetworkImage(
                     imageUrl: car.mainPhoto,
                     width: double.infinity,
+
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       color: Colors.grey[100],
@@ -350,7 +352,7 @@ class HomeContents extends StatelessWidget {
                         '${car.makeName} ${car.modelName}',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           height: 1.2,
                         ),
@@ -367,15 +369,15 @@ class HomeContents extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoRow('StockID', '${car.stockID}'),
+                  _buildInfoRow(context,'StockID', '${car.stockID}'),
                   const SizedBox(height: 8),
-                  _buildInfoRow('Year', '${car.yrOfMfg.substring(0,4)}'),
+                  _buildInfoRow(context,'Year', '${car.yrOfMfg.substring(0,4)}'),
                   const SizedBox(height: 8),
-                  _buildInfoRow('Fuel', car.fuel),
-                  const SizedBox(height: 8),
-                  _buildInfoRow('Mileage', '${car.mileage} km'),
-                  const SizedBox(height: 8),
-                  _buildInfoRow('Transmission', car.transm),
+                  _buildInfoRow(context,'Fuel', car.fuel),
+                  // const SizedBox(height: 8),
+                  // _buildInfoRow(context,'Mileage', '${car.mileage} km'),
+                  // const SizedBox(height: 8),
+                  // _buildInfoRow(context,'Trans', car.transm),
                 ],
               ),
             ),
@@ -384,7 +386,6 @@ class HomeContents extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildCarGrid(List<Vehicle> cars) {
     return SliverPadding(
@@ -411,22 +412,19 @@ class HomeContents extends StatelessWidget {
     );
   }
 
-  Widget _buildHorizontalCarCard(BuildContext context, Vehicle car) {
+  Widget _buildHorizontalCarCard(context,Vehicle car) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
-        color: Colors.white,
+        color: colors.surface,
         child: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => VehicleDetailsScreen(vehicleId: car.vehicleId),
-              ),
-            );
-          },
+          onTap: () => _navigateToDetails(context, car),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             child: Row(
@@ -441,21 +439,32 @@ class HomeContents extends StatelessWidget {
                         CachedNetworkImage(
                           imageUrl: car.mainPhoto,
                           width: double.infinity,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           placeholder: (context, url) => Container(
-                            color: Colors.grey[100],
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                            color: colors.surfaceVariant,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.primary,
+                              ),
                             ),
                           ),
                           errorWidget: (context, url, error) => Container(
-                            color: Colors.grey[100],
-                            child: const Column(
+                            color: colors.surfaceVariant,
+                            child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.car_repair, size: 32, color: Colors.grey),
-                                SizedBox(height: 4),
-                                Text('Image not available', style: TextStyle(fontSize: 10)),
+                                Icon(Icons.car_repair,
+                                    size: 32,
+                                    color: colors.onSurfaceVariant
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Image not available',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -476,8 +485,8 @@ class HomeContents extends StatelessWidget {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  Colors.transparent,
-                                  Colors.black.withOpacity(0.6),
+                                  colors.surface.withOpacity(0),
+                                  colors.surface.withOpacity(0.7)
                                 ],
                               ),
                             ),
@@ -497,19 +506,19 @@ class HomeContents extends StatelessWidget {
                       children: [
                         Text(
                           '${car.makeName} ${car.modelName}',
-                          style: const TextStyle(
-                            fontSize: 16,
+                          style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
+                            color: colors.onSurface,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 8),
-                        _buildCompactInfoRow('StockID', '${car.stockID}'),
-                        _buildCompactInfoRow('Year', '${car.yrOfMfg.substring(0,4)}'),
-                        _buildCompactInfoRow('Fuel', car.fuel),
-                        _buildCompactInfoRow('Mileage', '${car.mileage} km'),
-                        _buildCompactInfoRow('Transmission', car.transm),
+                        _buildCompactInfoRow(context,'StockID', '${car.stockID}'),
+                        _buildCompactInfoRow(context,'Year', '${car.yrOfMfg.substring(0,4)}'),
+                        _buildCompactInfoRow(context,'Fuel', car.fuel),
+                        // _buildCompactInfoRow(context,'Mileage', '${car.mileage} km'),
+                        // _buildCompactInfoRow(context,'Transmission', car.transm),
                       ],
                     ),
                   ),
@@ -523,7 +532,11 @@ class HomeContents extends StatelessWidget {
   }
 
 
-  Widget _buildCompactInfoRow(String label, String value) {
+  Widget _buildCompactInfoRow(context, String label, String value) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -531,16 +544,15 @@ class HomeContents extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
               fontWeight: FontWeight.w500,
             ),
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 12,
+            style: textTheme.bodyMedium?.copyWith(
+              color: colors.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -549,17 +561,19 @@ class HomeContents extends StatelessWidget {
     );
   }
 
+  Widget _buildInfoRow(context, String label, String value) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
-  Widget _buildInfoRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Flexible(
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 9,
-              color: Colors.grey[600],
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
               fontWeight: FontWeight.w500,
             ),
             overflow: TextOverflow.ellipsis,
@@ -569,9 +583,10 @@ class HomeContents extends StatelessWidget {
         Flexible(
           child: Text(
             value,
-            style: const TextStyle(
-              fontSize: 8,
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurface,
               fontWeight: FontWeight.w600,
+
             ),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,

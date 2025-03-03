@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'VehicleDetailsScreen.dart';
+import 'chat_screen.dart';
 import 'config.dart';
 import 'home_screen.dart'; // Import for `firstWhereOrNull`
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -594,6 +595,15 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
             onPressed: () => _mainScaffoldKey.currentState?.openEndDrawer(),
             icon: const Icon(Icons.filter_list_sharp),
             tooltip: 'Filters',
+          ),
+          IconButton(
+            icon: const Icon(Icons.chat),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChatScreen(),
+              ),
+            ),
           ),
         ],
       ),

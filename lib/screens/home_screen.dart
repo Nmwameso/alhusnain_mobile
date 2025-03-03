@@ -1,10 +1,11 @@
-import 'package:ah_customer/screens/profile_screen.dart';
-import 'package:ah_customer/screens/search_screen.dart';
+import 'package:ah_customer/screens/chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'car_chooser.dart';
 import 'filters_screen.dart';
 import 'home_contents.dart';
 import 'wishlist_screen.dart';
+import 'profile_screen.dart';
+import 'search_screen.dart';
 
 enum CarLayout { grid, list }
 
@@ -52,15 +53,11 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-
-                // Open FiltersScreen and wait for the selected filters
                 final filters = await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => FiltersScreen(carLayout: _carLayout, onToggleLayout: _toggleLayout)),
                 );
-
                 if (filters != null) {
-                  // Navigate to Search Page with selected filters
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -82,7 +79,6 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +102,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _screens[_selectedIndex],
+      floatingActionButton: Tooltip(
+        message: "Hi! 👋 I am Alhusnain Motors chat assistant",
+        waitDuration: Duration(milliseconds: 500), // Delay before showing tooltip
+        showDuration: Duration(seconds: 4), // Keep tooltip visible for 4 seconds
+        child: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => ChatScreen()),
+            );
+          },
+          child: Icon(Icons.chat),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         height: 70,
         selectedIndex: _selectedIndex,
@@ -131,9 +141,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Wishlist',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline, size: 28), // ✅ Changed to Profile Icon
-            selectedIcon: Icon(Icons.person, size: 28), // ✅ Active Profile Icon
-            label: 'Profile', // ✅ Changed label from Contact to Profile
+            icon: Icon(Icons.person_outline, size: 28),
+            selectedIcon: Icon(Icons.person, size: 28),
+            label: 'Profile',
           ),
         ],
       ),
