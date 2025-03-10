@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_data.dart';
-import '../models/vehicle.dart';
+
 import '../models/vehicle_details.dart';
 
 class ApiService {
-  final String baseUrl = 'https://alhusnainmotors.co.ke/api/customer';
+  final String baseUrl = 'https://91f2-197-232-248-100.ngrok-free.app/api/customer';
 
   /// Fetch Home Data from API
   Future<HomeData> fetchHomeData() async {
@@ -55,4 +55,102 @@ class ApiService {
       throw Exception('Failed to load vehicle details');
     }
   }
+
+  /// **Submit Upcoming Car Notification Request**
+  Future<bool> submitUpcomingCarNotification({
+    required String vehicleId,
+    required String fullName,
+    required String email,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/notify-upcoming-car'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'vehicle_id': vehicleId,
+        'full_name': fullName,
+        'email_address': email,
+
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return true;
+    } else {
+      throw Exception('Failed to register for notifications');
+    }
+  }
+
+  /// ❌ Remove upcoming car notification (if backend supports it)
+  Future<bool> removeUpcomingCarNotification(String vehicleId) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/notify-upcoming-car/$vehicleId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      throw Exception('Failed to remove notification');
+    }
+  }
+
+  /// **Submit Direct Import Request**
+  Future<bool> submitDirectImport({
+    required String fullName,
+    required String phoneNumber,
+    String? emailAddress,
+    required String make,
+    required String model,
+    required String carFeatures,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/direct-import'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'full_name': fullName,
+        'phone_number': phoneNumber,
+        'email_address': emailAddress,
+        'make': make,
+        'model': model,
+        'car_features': carFeatures,
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return true;
+    } else {
+      throw Exception('Failed to submit direct import request');
+    }
+  }
+
 }

@@ -4,21 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:url_launcher/url_launcher_string.dart'; // ✅ WhatsApp support
+import 'package:url_launcher/url_launcher_string.dart';
 
 import 'VehicleDetailsScreen.dart';
 import 'config.dart';
 
-
-class SearchMetadata {
-  final int nbHits;
-  const SearchMetadata(this.nbHits);
-  factory SearchMetadata.fromResponse(SearchResponse response) => SearchMetadata(response.nbHits);
-}
-
 class ChatScreen extends StatefulWidget {
-
-
   @override
   _ChatScreenState createState() => _ChatScreenState();
 }
@@ -34,6 +25,8 @@ class _ChatScreenState extends State<ChatScreen> {
     indexName: AlgoliaConfig.indexName,
   );
 
+  Map<String, String> _conversationState = {};
+
   @override
   void initState() {
     super.initState();
@@ -41,15 +34,66 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startChatWithAI() {
-    Future.delayed(const Duration(seconds: 1), () {
-      _addBotMessage("👋 Hello! I'm your AI assistant.");
-      Future.delayed(const Duration(seconds: 2), () {
-        _addBotMessage("How can I help you today?", quickReplies: [
-          "Find a car",
-          "Check latest models",
-          "Compare vehicles"
-        ]);
+    _addBotMessage("👋 Hello! I'm your AI assistant. What kind of car are you looking for?", quickReplies: [
+      "Find a car",
+      "Check latest models",
+      "Compare vehicles"
+    ]);
+  }
+
+  void _processUserMessage(String message) {
+    _addUserMessage(message);
+    message = message.toLowerCase().trim();
+
+    if (!_conversationState.containsKey('make')) {
+      _conversationState['make'] = message;
+      _addBotMessage("Got it! Which model are you interested in?");
+      return;
+    }
+
+    if (!_conversationState.containsKey('model')) {
+      _conversationState['model'] = message;
+      _addBotMessage("Do you prefer Petrol or Diesel?");
+      return;
+    }
+
+    if (!_conversationState.containsKey('fuelType')) {
+      _conversationState['fuelType'] = message;
+      _addBotMessage("Do you have a preferred color?");
+      return;
+    }
+
+    if (!_conversationState.containsKey('color')) {
+      _conversationState['color'] = message;
+      _searchFilteredVehicles();
+      return;
+    }
+  }
+
+  void _searchFilteredVehicles() {
+    _addBotMessage("🔍 Searching for the perfect car...", isThinking: true);
+
+    Future.delayed(const Duration(seconds: 2), () async {
+      _productsSearcher.applyState(
+            (state) => state.copyWith(
+          query: "${_conversationState['make']} ${_conversationState['model']} ${_conversationState['fuelType']} ${_conversationState['color']}",
+          hitsPerPage: 8,
+        ),
+      );
+
+      final response = await _productsSearcher.responses.first;
+
+      setState(() {
+        _messages.removeWhere((m) => (m['isThinking'] ?? false) == true);
+
+        if (response.hits.isNotEmpty) {
+          _addBotMessage("✅ I found the perfect match for you!", vehicles: response.hits);
+        } else {
+          _addBotMessage("⚠️ Sorry, I couldn't find an exact match. Would you like to contact support?", quickReplies: ["Yes, Contact Support"]);
+        }
       });
+
+      _conversationState.clear();
     });
   }
 
@@ -64,79 +108,6 @@ class _ChatScreenState extends State<ChatScreen> {
         'timestamp': DateTime.now(),
       });
     });
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _processUserMessage(String message) {
-    _addUserMessage(message);
-
-    if (message.toLowerCase() == "find a car") {
-      _addBotMessage("What type of car are you looking for? (e.g., SUV, Toyota, Electric)");
-    } else if (message.toLowerCase().contains("price") || message.toLowerCase().contains("cost")) {
-      _handlePriceInquiry(message);
-    } else if (message.length > 3) {
-      _searchVehicles(message);
-    } else {
-      _addBotMessage("I'm here to help! Let me know what you're looking for. 🚗");
-    }
-  }
-
-  void _searchVehicles(String query) {
-    _addBotMessage("", isThinking: true);
-
-    Future.delayed(const Duration(seconds: 2), () async {
-      _productsSearcher.applyState(
-            (state) => state.copyWith(query: query.trim(), page: 0, hitsPerPage: 3),
-      );
-
-      final response = await _productsSearcher.responses.first;
-
-      setState(() {
-        _messages.removeWhere((m) => (m['isThinking'] ?? false) == true);
-
-        if (response.hits.isNotEmpty) {
-          _addBotMessage("Here are some cars I found for you:", vehicles: response.hits);
-        } else {
-          _addBotMessage("I couldn't find any matching vehicles. Would you like to contact us on WhatsApp?", quickReplies: ["Yes, Contact Support"]);
-        }
-      });
-    });
-  }
-
-  void _handlePriceInquiry(String message) {
-    _addBotMessage("Let me check the price for you...");
-
-    Future.delayed(const Duration(seconds: 2), () async {
-      _productsSearcher.applyState(
-            (state) => state.copyWith(query: message.trim(), page: 0, hitsPerPage: 1),
-      );
-
-      final response = await _productsSearcher.responses.first;
-
-      setState(() {
-        if (response.hits.isNotEmpty) {
-          final vehicle = response.hits.first;
-          _addBotMessage(
-            "The price of the ${vehicle['make']} ${vehicle['model']} (${vehicle['yr_of_mfg']}) is ${vehicle['price']} EUR. Would you like more details?",
-            quickReplies: ["Yes, Contact Support"],
-          );
-        } else {
-          _addBotMessage("I couldn't find the price. Would you like to contact us on WhatsApp?", quickReplies: ["Yes, Contact Support"]);
-        }
-      });
-    });
   }
 
   void _addUserMessage(String text) {
@@ -145,7 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _controller.clear();
     });
 
-    if (text == "Yes, Contact Support") {
+    if (text.toLowerCase().contains("contact support")) {
       _sendToWhatsApp();
     }
   }
@@ -160,24 +131,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }).join("\n\n");
 
     final String message = '''
-📢 *$greeting! I need help finding a vehicle.* 🚗  
-Here is our chat history:  
-$chatHistory  
+    📢 *$greeting! I need help finding a vehicle.* 🚗  
+    Here is our chat history:  
+    $chatHistory    
+    ''';
 
-🔗 *Please assist me with my request.*  
-''';
-
-    final String phone = "+254748222222"; // ✅ Ensure the number is in international format
+    final String phone = "+254748222222";
     final String whatsappLink = "https://wa.me/$phone?text=${Uri.encodeComponent(message)}";
 
     if (!await launchUrlString(whatsappLink, mode: LaunchMode.externalApplication)) {
       throw 'Could not launch WhatsApp';
     }
   }
+
   Widget _buildMessageBubble(Map<String, dynamic> message) {
-    bool isUser = message['isUser'] ?? false; // ✅ Fix: Prevent null error
-    bool isThinking = message['isThinking'] ?? false; // ✅ Fix: Prevent null error
-    String time = DateFormat('hh:mm a').format(message['timestamp'] ?? DateTime.now());
+    bool isUser = message['isUser'] ?? false;
+    bool isThinking = message['isThinking'] ?? false;
+    String time = DateFormat('HH:mm a').format(message['timestamp'] ?? DateTime.now());
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -189,17 +159,12 @@ $chatHistory
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isUser ? Colors.blueAccent : Colors.grey[200],
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(15),
-                topRight: const Radius.circular(15),
-                bottomLeft: isUser ? const Radius.circular(15) : Radius.zero,
-                bottomRight: isUser ? Radius.zero : const Radius.circular(15),
-              ),
+              borderRadius: BorderRadius.circular(15),
             ),
             child: isThinking
-                ? SpinKitThreeBounce(color: Colors.black54, size: 18) // ✅ AI typing animation
+                ? SpinKitThreeBounce(color: Colors.black54, size: 18)
                 : Text(
-              message['text'] ?? "Unknown message", // ✅ Fix: Prevents null text
+              message['text'] ?? "Unknown message",
               style: TextStyle(color: isUser ? Colors.white : Colors.black),
             ),
           ),
@@ -221,11 +186,6 @@ $chatHistory
         spacing: 10,
         children: replies
             .map((reply) => ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blueGrey[50],
-            foregroundColor: Colors.blueAccent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          ),
           onPressed: () => _processUserMessage(reply),
           child: Text(reply),
         ))
@@ -233,6 +193,7 @@ $chatHistory
       ),
     );
   }
+
   Widget _buildVehicleList(List<Hit> vehicles) {
     return Column(
       children: vehicles.map(_buildVehicleCard).toList(),
@@ -241,76 +202,20 @@ $chatHistory
 
   Widget _buildVehicleCard(Hit vehicle) {
     return Card(
-      elevation: 3,
       margin: const EdgeInsets.all(8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      surfaceTintColor: Colors.white,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+      child: ListTile(
+        leading: CachedNetworkImage(imageUrl: vehicle['main_photo'] ?? '', width: 60),
+        title: Text("${vehicle['make']} ${vehicle['model']}"),
+        subtitle: Text("Year: ${vehicle['yr_of_mfg']} • Fuel: ${vehicle['fuel']}"),
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => VehicleDetailsScreen(
-                vehicleId: vehicle['vehicle_id'].toString(),
-              ),
+              builder: (context) => VehicleDetailsScreen(vehicleId: vehicle['vehicle_id'].toString()),
             ),
           );
         },
-        child: IntrinsicHeight(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: CachedNetworkImage(
-                  imageUrl: vehicle['main_photo'] ?? '',
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: 100,
-                  placeholder: (context, url) => Shimmer.fromColors(
-                    baseColor: Colors.grey[300]!,
-                    highlightColor: Colors.grey[100]!,
-                    child: Container(color: Colors.white, height: 140),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Colors.grey[200],
-                    height: 140,
-                    child: const Center(
-                      child: Icon(Icons.directions_car, size: 40, color: Colors.grey),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInfoRow('Year', vehicle['yr_of_mfg']?.toString() ?? 'N/A'),
-                    const SizedBox(height: 4),
-                    _buildInfoRow('Fuel', vehicle['fuel']?.toString() ?? 'N/A'),
-                    const SizedBox(height: 4),
-                    _buildInfoRow('Mileage', '${vehicle['mileage']} km'),
-                    const SizedBox(height: 4),
-                    _buildInfoRow('Trans', vehicle['transm']?.toString() ?? 'N/A'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-      ],
     );
   }
 
@@ -320,30 +225,11 @@ $chatHistory
       appBar: AppBar(title: const Text('AI Chat Assistant')),
       body: Column(
         children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(8),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) => _buildMessageBubble(_messages[index]),
-            ),
-          ),
+          Expanded(child: ListView.builder(controller: _scrollController, itemCount: _messages.length, itemBuilder: (context, index) => _buildMessageBubble(_messages[index]))),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: 'Type your message...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
-                    ),
-                    onSubmitted: (value) => _processUserMessage(value),
-                  ),
-                ),
-                IconButton(icon: const Icon(Icons.send), onPressed: () => _processUserMessage(_controller.text)),
-              ],
+              children: [Expanded(child: TextField(controller: _controller, onSubmitted: _processUserMessage)), IconButton(icon: const Icon(Icons.send), onPressed: () => _processUserMessage(_controller.text))],
             ),
           ),
         ],

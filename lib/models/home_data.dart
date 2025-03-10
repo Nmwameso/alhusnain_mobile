@@ -14,6 +14,7 @@ class HomeData {
   final List<Location> locations;
   final List<Vehicle> latestCars;
   final List<Vehicle> upcomingCars;
+  final List<Vehicle> featuredCars;
 
   HomeData({
     required this.bodytypes,
@@ -23,6 +24,7 @@ class HomeData {
     required this.locations,
     required this.latestCars,
     required this.upcomingCars,
+    required this.featuredCars,
   });
 
   factory HomeData.fromJson(Map<String, dynamic> json) {
@@ -52,6 +54,10 @@ class HomeData {
           .toList() ??
           [],
       upcomingCars: (json['upcoming_cars'] as List<dynamic>?)
+          ?.map((e) => Vehicle.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+          [],
+      featuredCars: (json['featured_cars'] as List<dynamic>?)
           ?.map((e) => Vehicle.fromJson(e as Map<String, dynamic>))
           .toList() ??
           [],

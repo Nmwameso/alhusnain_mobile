@@ -1,36 +1,267 @@
 import 'dart:io';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/brand_with_search.dart';
 import '../models/home_data.dart';
+import '../providers/auth_provider.dart';
 import '../providers/home_provider.dart';
 import '../models/vehicle.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../services/api_service.dart';
 import '../widgets/FavoriteIcon.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'VehicleDetailsScreen.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert'; // Required for encoding/decoding data
 
 
-class HomeContents extends StatelessWidget {
+class HomeContents extends StatefulWidget {
   final CarLayout carLayout;
   final VoidCallback onToggleLayout;
 
-  const HomeContents({Key? key, required this.carLayout, required this.onToggleLayout})
-      : super(key: key);
+  const HomeContents({Key? key, required this.carLayout, required this.onToggleLayout}) : super(key: key);
+
   @override
-  Widget build(BuildContext context) {
-    return Consumer<HomeProvider>(
-      builder: (context, provider, child) {
-        if (provider.isLoading) return _buildLoading();
-        if (provider.error != null) return _buildError(context, provider.error!);
-        return _buildContent(provider.homeData!);
+  _HomeContentsState createState() => _HomeContentsState();
+}
+
+class _HomeContentsState extends State<HomeContents> {
+  Set<String> _notifiedCars = {}; // Stores vehicle IDs that are subscribed // Stores subscribed vehicle IDs
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifiedCars(); // Load saved data on app startup
+  }
+
+  /// **Load Notified Cars from SharedPreferences**
+  Future<void> _loadNotifiedCars() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? savedData = prefs.getString('notified_cars');
+
+    if (savedData != null) {
+      setState(() {
+        _notifiedCars = Set<String>.from(jsonDecode(savedData));
+      });
+    }
+  }
+
+  /// **Save Notified Cars to SharedPreferences**
+  Future<void> _saveNotifiedCars() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('notified_cars', jsonEncode(_notifiedCars.toList()));
+  }
+  // void _toggleNotifyMe(BuildContext context, Vehicle car) async {
+  //   final apiService = ApiService();
+  //   final authProvider = Provider.of<AuthProvider>(context, listen: false);
+  //   final user = authProvider.currentUser;
+  //
+  //
+  //   if (user == null) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(content: Text('Please log in to receive notifications')),
+  //     );
+  //     return;
+  //   }
+  //
+  //   setState(() {
+  //     if (_notifiedCars.contains(car.vehicleId)) {
+  //       _notifiedCars.remove(car.vehicleId);
+  //     } else {
+  //       _notifiedCars.add(car.vehicleId);
+  //     }
+  //   });
+  //
+  //   await _saveNotifiedCars(); // ✅ Save changes to SharedPreferences
+  //   try {
+  //     if (_notifiedCars.contains(car.vehicleId)) {
+  //       // ✅ Send request to register notification
+  //       await apiService.submitUpcomingCarNotification(
+  //         vehicleId: car.vehicleId,
+  //         fullName: user.name,
+  //         email: user.email,
+  //       );
+  //
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('You will be notified when ${car.makeName} ${car.modelName} is available!'),backgroundColor: Colors.green,),
+  //       );
+  //     } else {
+  //       // ❌ Send request to remove notification
+  //       await apiService.removeUpcomingCarNotification(car.vehicleId);
+  //
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('You will no longer receive updates for ${car.makeName} ${car.modelName}.'), backgroundColor: Colors.orange,),
+  //       );
+  //     }
+  //   } catch (error) {
+  //     // ❗ Rollback UI state if API request fails
+  //     setState(() {
+  //       if (_notifiedCars.contains(car.vehicleId)) {
+  //         _notifiedCars.remove(car.vehicleId);
+  //       } else {
+  //         _notifiedCars.add(car.vehicleId);
+  //       }
+  //     });
+  //     await _saveNotifiedCars(); // ✅ Save updated state after rollback
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Error: ${error.toString()}'),backgroundColor: Colors.red,),
+  //     );
+  //   }
+  // }
+
+  Future<void> _toggleNotifyMe(BuildContext context, Vehicle car) async {
+    final apiService = ApiService();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to manage notifications')),
+      );
+      return;
+    }
+
+    bool isNotifying = !_notifiedCars.contains(car.vehicleId);
+
+    if (isNotifying) {
+      // Show confirmation dialog before enabling notifications
+      bool confirmSubscription = await _showSubscriptionDialog(context, car);
+      if (!confirmSubscription) return;
+    } else {
+      // Show confirmation dialog before removing notifications
+      bool confirmRemoval = await _showConfirmationDialog(context, car);
+      if (!confirmRemoval) return;
+    }
+
+    // ✅ Update UI state optimistically
+    setState(() {
+      if (isNotifying) {
+        _notifiedCars.add(car.vehicleId);
+      } else {
+        _notifiedCars.remove(car.vehicleId);
+      }
+    });
+
+    await _saveNotifiedCars(); // ✅ Persist changes in SharedPreferences
+
+    try {
+      if (isNotifying) {
+        // ✅ Register notification with API
+        await apiService.submitUpcomingCarNotification(
+          vehicleId: car.vehicleId,
+          fullName: user.name,
+          email: user.email,
+        );
+
+        // ✅ Subscribe to Firebase topic for this vehicle
+        try {
+          await FirebaseMessaging.instance.subscribeToTopic('vehicle_${car.vehicleId}');
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FCM Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('You will be notified when ${car.makeName} ${car.modelName} is available!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        // ❌ Remove notification from API
+        await apiService.removeUpcomingCarNotification(car.vehicleId);
+
+        // ✅ Unsubscribe from Firebase topic
+        try {
+          await FirebaseMessaging.instance.unsubscribeFromTopic('vehicle_${car.vehicleId}');
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FCM Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('You will no longer receive updates for ${car.makeName} ${car.modelName}.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (error) {
+      // ❗ Rollback UI state if API request fails
+      setState(() {
+        if (isNotifying) {
+          _notifiedCars.remove(car.vehicleId);
+        } else {
+          _notifiedCars.add(car.vehicleId);
+        }
+      });
+
+      await _saveNotifiedCars(); // ✅ Save rollback state
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${error.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<bool> _showSubscriptionDialog(BuildContext context, Vehicle car) async {
+    return await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Subscribe to Updates?"),
+        content: Text("Do you want to receive notifications when ${car.makeName} ${car.modelName} is available  in stock?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false), // Cancel
+            child: Text("No"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true), // Confirm
+            child: Text("Yes"),
+          ),
+        ],
+      ),
+    ) ?? false; // Default to false if dialog is dismissed
+  }
+
+
+  Future<bool> _showConfirmationDialog(BuildContext context, Vehicle car) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Remove Notification?'),
+          content: Text('Are you sure you want to stop notifications for ${car.makeName} ${car.modelName}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false), // ❌ Cancel
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true), // ✅ Confirm
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
       },
-    );
+    ) ?? false; // Default to false if dialog is dismissed
   }
 
   void _navigateToDetails(BuildContext context, Vehicle car) {
@@ -41,6 +272,7 @@ class HomeContents extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildLoading() {
     return ListView.builder(
       itemCount: 3,
@@ -122,12 +354,17 @@ class HomeContents extends StatelessWidget {
       },
     );
   }
-
   Widget _buildContent(HomeData data) {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildBrands(data.brandsWithSearch)),
-
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          sliver: SliverToBoxAdapter(
+            child: _buildSectionTitle('Featured Cars'),
+          ),
+        ),
+        _buildCarGrid(data.featuredCars),
         SliverPadding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           sliver: SliverToBoxAdapter(
@@ -135,19 +372,16 @@ class HomeContents extends StatelessWidget {
           ),
         ),
         _buildCarGrid(data.latestCars),
-
         SliverPadding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           sliver: SliverToBoxAdapter(
             child: _buildSectionTitle('Upcoming Cars'),
           ),
         ),
-        _buildCarGrid(data.upcomingCars),
+        _buildCarGrid(data.upcomingCars, isUpcoming: true), // Pass isUpcoming
       ],
     );
   }
-
-
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -161,7 +395,6 @@ class HomeContents extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildBrands(List<BrandWithSearch> brandsWithSearch) {
     return SizedBox(
       height: 132,
@@ -191,7 +424,9 @@ class HomeContents extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => VehicleSearchPage(
-                          selectedBrand: brand.makeName, carLayout: carLayout, onToggleLayout: onToggleLayout,
+                          selectedBrand: brand.makeName,
+                          carLayout: widget.carLayout,
+                          onToggleLayout: widget.onToggleLayout,
                         ),
                       ),
                     );
@@ -286,17 +521,50 @@ class HomeContents extends StatelessWidget {
       },
     );
   }
+  Widget _buildNotifyButton(Vehicle car) {
+    bool isNotified = _notifiedCars.contains(car.vehicleId);
 
+    return SizedBox(
+      height: 28,
+      child: ElevatedButton.icon(
+        onPressed: () => _toggleNotifyMe(context, car),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isNotified ? Colors.red : Theme.of(context).colorScheme.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          textStyle: const TextStyle(fontSize: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+        icon: Icon(
+          isNotified ? Icons.notifications_off : Icons.notifications_active,
+          size: 14,
+        ),
+        label: Text(isNotified ? 'Unnotify' : 'Notify Me'),
+      ),
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<HomeProvider>(
+      builder: (context, provider, child) {
+        if (provider.isLoading) return _buildLoading();
+        if (provider.error != null) return _buildError(context, provider.error!);
+        return _buildContent(provider.homeData!);
+      },
+    );
+  }
 
-  Widget _buildCarCard(BuildContext context, Vehicle car) {
+  Widget _buildCarCard(BuildContext context, Vehicle car, {bool isUpcoming = false}) {
     return GestureDetector(
       onTap: () => _navigateToDetails(context, car),
       child: Material(
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
         color: Colors.white,
-        elevation: 3, // ✅ Added elevation for a premium look
+        elevation: 3,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -306,7 +574,6 @@ class HomeContents extends StatelessWidget {
                   CachedNetworkImage(
                     imageUrl: car.mainPhoto,
                     width: double.infinity,
-
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       color: Colors.grey[100],
@@ -321,8 +588,7 @@ class HomeContents extends StatelessWidget {
                         children: [
                           Icon(Icons.car_repair, size: 32, color: Colors.grey),
                           SizedBox(height: 4),
-                          Text('Image not available',
-                              style: TextStyle(fontSize: 10)),
+                          Text('Image not available', style: TextStyle(fontSize: 10)),
                         ],
                       ),
                     ),
@@ -369,15 +635,15 @@ class HomeContents extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoRow(context,'StockID', '${car.stockID}'),
+                  _buildInfoRow(context, 'StockID', '${car.stockID}'),
                   const SizedBox(height: 8),
-                  _buildInfoRow(context,'Year', '${car.yrOfMfg.substring(0,4)}'),
+                  _buildInfoRow(context, 'Year', '${car.yrOfMfg.substring(0, 4)}'),
                   const SizedBox(height: 8),
-                  _buildInfoRow(context,'Fuel', car.fuel),
-                  // const SizedBox(height: 8),
-                  // _buildInfoRow(context,'Mileage', '${car.mileage} km'),
-                  // const SizedBox(height: 8),
-                  // _buildInfoRow(context,'Trans', car.transm),
+                  _buildInfoRow(context, 'Fuel', car.fuel),
+                  if (isUpcoming) ...[
+                    const SizedBox(height: 8),
+                    _buildNotifyButton(car),
+                  ],
                 ],
               ),
             ),
@@ -387,10 +653,10 @@ class HomeContents extends StatelessWidget {
     );
   }
 
-  Widget _buildCarGrid(List<Vehicle> cars) {
+  Widget _buildCarGrid(List<Vehicle> cars, {bool isUpcoming = false}) {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      sliver: carLayout == CarLayout.grid
+      sliver: widget.carLayout == CarLayout.grid
           ? SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
@@ -399,20 +665,19 @@ class HomeContents extends StatelessWidget {
           childAspectRatio: 0.75,
         ),
         delegate: SliverChildBuilderDelegate(
-              (context, index) => _buildCarCard(context, cars[index]),
+              (context, index) => _buildCarCard(context, cars[index], isUpcoming: isUpcoming),
           childCount: cars.length,
         ),
       )
           : SliverList(
         delegate: SliverChildBuilderDelegate(
-              (context, index) => _buildHorizontalCarCard(context, cars[index]),
+              (context, index) => _buildHorizontalCarCard(context, cars[index], isUpcoming: isUpcoming),
           childCount: cars.length,
         ),
       ),
     );
   }
-
-  Widget _buildHorizontalCarCard(context,Vehicle car) {
+  Widget _buildHorizontalCarCard(BuildContext context, Vehicle car, {bool isUpcoming = false}) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -439,7 +704,7 @@ class HomeContents extends StatelessWidget {
                         CachedNetworkImage(
                           imageUrl: car.mainPhoto,
                           width: double.infinity,
-                          fit: BoxFit.contain,
+                          fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
                             color: colors.surfaceVariant,
                             child: Center(
@@ -454,10 +719,7 @@ class HomeContents extends StatelessWidget {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.car_repair,
-                                    size: 32,
-                                    color: colors.onSurfaceVariant
-                                ),
+                                Icon(Icons.car_repair, size: 32, color: colors.onSurfaceVariant),
                                 const SizedBox(height: 4),
                                 Text(
                                   'Image not available',
@@ -473,24 +735,6 @@ class HomeContents extends StatelessWidget {
                           top: 8,
                           right: 8,
                           child: FavoriteIcon(vehicleId: car.vehicleId),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  colors.surface.withOpacity(0),
-                                  colors.surface.withOpacity(0.7)
-                                ],
-                              ),
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -514,11 +758,14 @@ class HomeContents extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 8),
-                        _buildCompactInfoRow(context,'StockID', '${car.stockID}'),
-                        _buildCompactInfoRow(context,'Year', '${car.yrOfMfg.substring(0,4)}'),
-                        _buildCompactInfoRow(context,'Fuel', car.fuel),
-                        // _buildCompactInfoRow(context,'Mileage', '${car.mileage} km'),
-                        // _buildCompactInfoRow(context,'Transmission', car.transm),
+                        _buildCompactInfoRow(context, 'StockID', '${car.stockID}'),
+                        _buildCompactInfoRow(context, 'Year', '${car.yrOfMfg.substring(0, 4)}'),
+                        _buildCompactInfoRow(context, 'Fuel', car.fuel),
+
+                        if (isUpcoming) ...[
+                          const SizedBox(height: 8),
+                          _buildNotifyButton(car),
+                        ],
                       ],
                     ),
                   ),
@@ -530,7 +777,6 @@ class HomeContents extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildCompactInfoRow(context, String label, String value) {
     final theme = Theme.of(context);
@@ -560,7 +806,6 @@ class HomeContents extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildInfoRow(context, String label, String value) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -597,5 +842,3 @@ class HomeContents extends StatelessWidget {
     );
   }
 }
-
-

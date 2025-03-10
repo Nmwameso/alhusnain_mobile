@@ -1,4 +1,6 @@
+import 'package:ah_customer/screens/VehicleDetailsScreen.dart';
 import 'package:ah_customer/theme/theme_manager.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
@@ -9,11 +11,22 @@ import 'package:ah_customer/providers/home_provider.dart';
 import 'package:ah_customer/providers/connectivity_provider.dart';
 import 'package:ah_customer/screens/home_screen.dart';
 import 'package:ah_customer/screens/login_screen.dart';
+import 'package:ah_customer/notifications/notification.dart';
 import 'dart:async';
+
+/// Global Navigator Key
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Notification Setup Instance
+final NotificationSetUp notificationSetUp = NotificationSetUp();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await notificationSetUp.initializeNotification();
+
+  // 🔹 Subscribe to a general topic for all users
+  FirebaseMessaging.instance.subscribeToTopic('general_notifications');
   runApp(MyApp());
 }
 
@@ -23,11 +36,14 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => AuthProvider()),
-        ChangeNotifierProvider(create: (context) => HomeProvider()..fetchHomeData()),
+        ChangeNotifierProvider(
+          create: (context) => HomeProvider()..fetchHomeData(),
+        ),
         ChangeNotifierProvider(create: (context) => ConnectivityProvider()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
+        navigatorKey: navigatorKey,
         title: 'AL-HUSNAIN Motors',
         theme: ThemeManager.buildIOSTheme(),
         home: SplashScreen(),
@@ -58,8 +74,8 @@ class _SplashScreenState extends State<SplashScreen> {
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
     Navigator.pushReplacementNamed(
-        context,
-        isLoggedIn ? '/home' : '/login'
+      context,
+      isLoggedIn ? '/home' : '/login',
     );
   }
 
