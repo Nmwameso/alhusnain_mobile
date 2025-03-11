@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_data.dart';
-
+import 'package:provider/provider.dart';
+import 'package:ah_customer/providers/auth_provider.dart';
 import '../models/vehicle_details.dart';
 
 class ApiService {
-  final String baseUrl = 'https://91f2-197-232-248-100.ngrok-free.app/api/customer';
+  final String baseUrl = 'https://1f62-197-232-248-100.ngrok-free.app/api/customer';
 
   /// Fetch Home Data from API
   Future<HomeData> fetchHomeData() async {
@@ -152,5 +153,31 @@ class ApiService {
       throw Exception('Failed to submit direct import request');
     }
   }
+
+  /// Fetches direct import requests for the authenticated user
+  Future<List<Map<String, dynamic>>> fetchDirectImportRequests() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/direct-imports'), // ✅ Use `baseUrl`
+      headers: {
+        'Authorization': 'Bearer $token', // ✅ Pass authentication token
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['direct_import_requests']);
+    } else {
+      throw Exception('Failed to fetch direct import requests: ${response.body}');
+    }
+  }
+
 
 }

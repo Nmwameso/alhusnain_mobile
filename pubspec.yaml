@@ -64,6 +64,8 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   permission_handler: ^11.4.0
   awesome_notifications: ^0.10.1
+  flutter_gemini: ^3.0.0
+  google_generative_ai: ^0.4.6
 
 
 dev_dependencies:

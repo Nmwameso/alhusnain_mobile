@@ -1,23 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ah_customer/providers/auth_provider.dart';
+import 'package:ah_customer/services/api_service.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
+  @override
+  _ProfileScreenState createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  late Future<List<Map<String, dynamic>>> _directImportFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _directImportFuture = _fetchDirectImportRequests();
+  }
+
+  /// Fetch Direct Import Requests from API
+  Future<List<Map<String, dynamic>>> _fetchDirectImportRequests() async {
+    try {
+      return await ApiService().fetchDirectImportRequests();
+    } catch (e) {
+      print("Error fetching direct import requests: $e");
+      return [];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.green,
+    return DefaultTabController(
+      length: 2, // ✅ Two tabs: Profile & Direct Import Cars
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Profile', style: TextStyle(color: Colors.black)),
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.black),
+          bottom: const TabBar(
+            labelColor: Colors.green,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.green,
+            tabs: [
+              Tab(icon: Icon(Icons.person), text: 'Profile'),
+              Tab(icon: Icon(Icons.directions_car), text: 'Direct Import Cars'),
+            ],
+          ),
+        ),
+        body: user == null
+            ? _buildNoUserView(context)
+            : TabBarView(
+          children: [
+            _buildUserProfile(context, user, authProvider), // ✅ Profile Tab
+            _buildDirectImportCars(), // ✅ Direct Import Cars Tab
+          ],
+        ),
       ),
-      body: user == null
-          ? _buildNoUserView(context)
-          : _buildUserProfile(context, user, authProvider),
     );
   }
 
@@ -49,25 +91,21 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  /// ✅ UI for logged-in users
+  /// ✅ UI for logged-in users (Profile Tab)
   Widget _buildUserProfile(BuildContext context, user, AuthProvider authProvider) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          _buildProfileHeader(user),
-          const SizedBox(height: 24),
-          _buildUserInfo(user),
-          const SizedBox(height: 24),
-          _buildLogoutButton(context, authProvider),
-        ],
-      ),
+    return Column(
+      children: [
+        _buildProfileHeader(user),
+        Expanded(child: _buildUserInfo(user)),
+        _buildLogoutButton(context, authProvider),
+      ],
     );
   }
 
-  /// ✅ Profile header with avatar and name
+  /// ✅ Google-style Profile Header
   Widget _buildProfileHeader(user) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: 40),
       decoration: const BoxDecoration(
         color: Colors.green,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
@@ -96,10 +134,10 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  /// ✅ User details in a card format
+  /// ✅ User details in a Google-style card format
   Widget _buildUserInfo(user) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Card(
         elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -126,7 +164,7 @@ class ProfileScreen extends StatelessWidget {
   /// ✅ Logout button
   Widget _buildLogoutButton(BuildContext context, AuthProvider authProvider) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
       child: ElevatedButton.icon(
         onPressed: () {
           authProvider.logout(context);
@@ -141,6 +179,46 @@ class ProfileScreen extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
+    );
+  }
+
+  /// ✅ Direct Import Cars Tab with API Data
+  Widget _buildDirectImportCars() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _directImportFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator()); // ✅ Show loader while fetching
+        }
+        if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
+          return const Center(child: Text("No Direct Import Requests Found"));
+        }
+
+        final directImports = snapshot.data!;
+        return ListView.builder(
+          padding: const EdgeInsets.all(16.0),
+          itemCount: directImports.length,
+          itemBuilder: (context, index) {
+            final item = directImports[index];
+            return Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 3,
+              child: ListTile(
+                leading: const Icon(Icons.directions_car, color: Colors.green),
+                title: Text("${item['make']} ${item['model']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Features: ${item['features']}"),
+                    Text("Status: ${item['status']}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text("Requested on: ${item['created_at']}"),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

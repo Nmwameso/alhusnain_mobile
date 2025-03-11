@@ -187,11 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         selectedIcon: Icon(Icons.local_shipping, size: 28),
                         label: 'Direct Import',
                       ),
-                      NavigationDestination(
-                        icon: Icon(Icons.menu, size: 28),
-                        selectedIcon: Icon(Icons.menu_open, size: 28),
-                        label: 'Menu',
-                      ),
+
                     ],
                   ),
                 ),
