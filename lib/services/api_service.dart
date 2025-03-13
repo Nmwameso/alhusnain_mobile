@@ -5,9 +5,9 @@ import '../models/home_data.dart';
 import 'package:provider/provider.dart';
 import 'package:ah_customer/providers/auth_provider.dart';
 import '../models/vehicle_details.dart';
-
+import 'package:url_launcher/url_launcher_string.dart';
 class ApiService {
-  final String baseUrl = 'https://1f62-197-232-248-100.ngrok-free.app/api/customer';
+  final String baseUrl = 'https://alhusnainmotors.co.ke/api/customer';
 
   /// Fetch Home Data from API
   Future<HomeData> fetchHomeData() async {
@@ -116,6 +116,7 @@ class ApiService {
   }
 
   /// **Submit Direct Import Request**
+  /// **Submit Direct Import Request and Share via WhatsApp**
   Future<bool> submitDirectImport({
     required String fullName,
     required String phoneNumber,
@@ -148,14 +149,51 @@ class ApiService {
     );
 
     if (response.statusCode == 201) {
+      // ✅ Send WhatsApp message after successful submission
+      _sendToWhatsApp(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        emailAddress: emailAddress,
+        make: make,
+        model: model,
+        carFeatures: carFeatures,
+      );
       return true;
     } else {
       throw Exception('Failed to submit direct import request');
     }
   }
+  /// ✅ **Send Direct Import Request Details to WhatsApp**
+  void _sendToWhatsApp({
+    required String fullName,
+    required String phoneNumber,
+    String? emailAddress,
+    required String make,
+    required String model,
+    required String carFeatures,
+  }) async {
+    int hour = DateTime.now().hour;
+    String greeting = (hour < 12) ? "Good morning" : (hour < 18) ? "Good afternoon" : "Good evening";
 
+    final String message = '''
+    📢 *$greeting! I have submitted a direct import request.* 🚗  
+    Here are the details:  
+
+  👤 *Full Name:* $fullName  
+  📧 *Email:* ${emailAddress ?? "N/A"}  
+  🚘 *Vehicle:* $make $model  
+  🔹 *Other information:* $carFeatures  
+  ''';
+
+    final String phone = "+254748222222"; // ✅ Update with correct WhatsApp number
+    final String whatsappLink = "https://wa.me/$phone?text=${Uri.encodeComponent(message)}";
+
+    if (!await launchUrlString(whatsappLink, mode: LaunchMode.externalApplication)) {
+      throw 'Could not launch WhatsApp';
+    }
+  }
   /// Fetches direct import requests for the authenticated user
-  Future<List<Map<String, dynamic>>> fetchDirectImportRequests() async {
+  Future<List<Map<String, dynamic>>> fetchDirectImportRequests(String email) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     String? token = prefs.getString('api_token');
 
@@ -164,9 +202,9 @@ class ApiService {
     }
 
     final response = await http.get(
-      Uri.parse('$baseUrl/direct-imports'), // ✅ Use `baseUrl`
+      Uri.parse('$baseUrl/direct-imports?email=$email'), // ✅ Pass email as query parameter
       headers: {
-        'Authorization': 'Bearer $token', // ✅ Pass authentication token
+        'Authorization': 'Bearer $token', // ✅ Include authentication token
         'Content-Type': 'application/json',
       },
     );
@@ -178,6 +216,7 @@ class ApiService {
       throw Exception('Failed to fetch direct import requests: ${response.body}');
     }
   }
+
 
 
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ah_customer/providers/auth_provider.dart';
 import 'package:ah_customer/services/api_service.dart';
+import 'package:intl/intl.dart';
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -14,13 +15,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _directImportFuture = _fetchDirectImportRequests();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    _directImportFuture = _fetchDirectImportRequests(user?.email ?? '');
+
   }
 
   /// Fetch Direct Import Requests from API
-  Future<List<Map<String, dynamic>>> _fetchDirectImportRequests() async {
+  Future<List<Map<String, dynamic>>> _fetchDirectImportRequests(String email) async {
     try {
-      return await ApiService().fetchDirectImportRequests();
+      return await ApiService().fetchDirectImportRequests(email);
     } catch (e) {
       print("Error fetching direct import requests: $e");
       return [];
@@ -200,6 +204,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           itemCount: directImports.length,
           itemBuilder: (context, index) {
             final item = directImports[index];
+
+            // ✅ Format the 'created_at' date
+            String formattedDate = _formatDate(item['created_at']);
+
             return Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 3,
@@ -209,9 +217,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Features: ${item['features']}"),
-                    Text("Status: ${item['status']}", style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text("Requested on: ${item['created_at']}"),
+                    Text("Features: ${item['car_features']}"),
+                    Text("Requested on: $formattedDate"),
                   ],
                 ),
               ),
@@ -220,6 +227,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  /// ✅ Function to format date properly
+  String _formatDate(String dateStr) {
+    try {
+      DateTime date = DateTime.parse(dateStr); // Convert to DateTime object
+      return DateFormat('dd MMM yyyy, HH:mm a').format(date); // Format e.g., "12 Mar 2024, 03:45 PM"
+    } catch (e) {
+      return dateStr; // Return original if parsing fails
+    }
   }
 
   /// ✅ Divider between user details

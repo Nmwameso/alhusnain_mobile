@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../screens/chat_screen.dart';
 import '../screens/car_chooser.dart';
 import '../screens/filters_screen.dart';
 import '../screens/home_contents.dart';

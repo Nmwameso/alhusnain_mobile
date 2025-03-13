@@ -354,6 +354,7 @@ class _HomeContentsState extends State<HomeContents> {
       },
     );
   }
+
   Widget _buildContent(HomeData data) {
     return CustomScrollView(
       slivers: [
@@ -382,6 +383,7 @@ class _HomeContentsState extends State<HomeContents> {
       ],
     );
   }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -395,6 +397,7 @@ class _HomeContentsState extends State<HomeContents> {
       ),
     );
   }
+
   Widget _buildBrands(List<BrandWithSearch> brandsWithSearch) {
     return SizedBox(
       height: 132,
@@ -478,7 +481,6 @@ class _HomeContentsState extends State<HomeContents> {
     );
   }
 
-
   Widget _buildBrandImage(String imageUrl) {
     if (imageUrl.isEmpty) {
       return const Icon(Icons.business, size: 32, color: Colors.grey);
@@ -521,6 +523,7 @@ class _HomeContentsState extends State<HomeContents> {
       },
     );
   }
+
   Widget _buildNotifyButton(Vehicle car) {
     bool isNotified = _notifiedCars.contains(car.vehicleId);
 
@@ -539,7 +542,7 @@ class _HomeContentsState extends State<HomeContents> {
         ),
         icon: Icon(
           isNotified ? Icons.notifications_off : Icons.notifications_active,
-          size: 14,
+          size: 5,
         ),
         label: Text(isNotified ? 'Unnotify' : 'Notify Me'),
       ),

@@ -1,17 +1,13 @@
-import 'dart:convert';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import 'VehicleDetailsScreen.dart';
 import 'config.dart';
-
-const String openAIAPIKey = "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"; // 🔹 Replace with your OpenAI API Key
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -80,8 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
     Future.delayed(const Duration(seconds: 2), () async {
       _productsSearcher.applyState(
             (state) => state.copyWith(
-          query:
-          "${_conversationState['make']} ${_conversationState['model']} ${_conversationState['fuelType']} ${_conversationState['color']}",
+          query: "${_conversationState['make']} ${_conversationState['model']} ${_conversationState['fuelType']} ${_conversationState['color']}",
           hitsPerPage: 8,
         ),
       );
@@ -94,50 +89,12 @@ class _ChatScreenState extends State<ChatScreen> {
         if (response.hits.isNotEmpty) {
           _addBotMessage("✅ I found the perfect match for you!", vehicles: response.hits);
         } else {
-          _askChatGPTForAlternatives();
+          _addBotMessage("⚠️ Sorry, I couldn't find an exact match. Would you like to contact support?", quickReplies: ["Yes, Contact Support"]);
         }
       });
 
       _conversationState.clear();
     });
-  }
-
-  void _askChatGPTForAlternatives() async {
-    _addBotMessage("🤖 Let me check with my AI database...", isThinking: true);
-
-    final aiResponse = await _getChatGPTResponse(
-        "I am looking for a ${_conversationState['make']} ${_conversationState['model']} in ${_conversationState['color']} color with a ${_conversationState['fuelType']} engine, but I couldn't find a match. Can you suggest alternatives?");
-
-    setState(() {
-      _messages.removeWhere((m) => (m['isThinking'] ?? false) == true);
-      _addBotMessage(aiResponse, quickReplies: ["Try another search", "Contact Support"]);
-    });
-  }
-
-  Future<String> _getChatGPTResponse(String userMessage) async {
-    const String apiUrl = "https://api.openai.com/v1/chat/completions";
-
-    final response = await http.post(
-      Uri.parse(apiUrl),
-      headers: {
-        "Authorization": "Bearer $openAIAPIKey",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode({
-        "model": "gpt-3.5-turbo",
-        "messages": [
-          {"role": "system", "content": "You are an AI assistant helping users find cars."},
-          {"role": "user", "content": userMessage},
-        ]
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data["choices"][0]["message"]["content"].trim();
-    } else {
-      return "❌ Sorry, I couldn't process that request. Please try again.";
-    }
   }
 
   void _addBotMessage(String text, {bool isThinking = false, List<String>? quickReplies, List<Hit>? vehicles}) {
@@ -165,14 +122,28 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendToWhatsApp() async {
+    int hour = DateTime.now().hour;
+    String greeting = (hour < 12) ? "Good morning" : (hour < 18) ? "Good afternoon" : "Good evening";
+
+    String chatHistory = _messages.map((msg) {
+      String sender = msg['isUser'] ? "You" : "AI Assistant";
+      return "*$sender:* ${msg['text']}";
+    }).join("\n\n");
+
+    final String message = '''
+    📢 *$greeting! I need help finding a vehicle.* 🚗  
+    Here is our chat history:  
+    $chatHistory    
+    ''';
+
     final String phone = "+254748222222";
-    final String message = Uri.encodeComponent("Hi, I need help finding a vehicle.");
-    final String whatsappLink = "https://wa.me/$phone?text=$message";
+    final String whatsappLink = "https://wa.me/$phone?text=${Uri.encodeComponent(message)}";
 
     if (!await launchUrlString(whatsappLink, mode: LaunchMode.externalApplication)) {
       throw 'Could not launch WhatsApp';
     }
   }
+
   Widget _buildMessageBubble(Map<String, dynamic> message) {
     bool isUser = message['isUser'] ?? false;
     bool isThinking = message['isThinking'] ?? false;
@@ -207,12 +178,18 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
   Widget _buildQuickReplies(List<String> replies) {
     return Padding(
       padding: const EdgeInsets.only(left: 12, top: 5),
       child: Wrap(
         spacing: 10,
-        children: replies.map((reply) => ElevatedButton(onPressed: () => _processUserMessage(reply), child: Text(reply))).toList(),
+        children: replies
+            .map((reply) => ElevatedButton(
+          onPressed: () => _processUserMessage(reply),
+          child: Text(reply),
+        ))
+            .toList(),
       ),
     );
   }

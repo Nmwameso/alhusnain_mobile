@@ -113,7 +113,12 @@ class _DirectImportScreenState extends State<DirectImportScreen> {
             child: Text('Accept', style: TextStyle(color: Colors.green)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              setState(() {
+                _agreeToTerms = false;
+              });
+              Navigator.pop(context);
+            },
             child: Text('Decline', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -159,7 +164,11 @@ class _DirectImportScreenState extends State<DirectImportScreen> {
                 children: [
                   Checkbox(
                     value: _agreeToTerms,
-                    onChanged: null, // Prevent manual checking
+                    onChanged: (bool? value) {
+                      setState(() {
+                        _agreeToTerms = value ?? false;
+                      });
+                    },
                   ),
                   GestureDetector(
                     onTap: _showTermsDialog,

@@ -14,7 +14,6 @@ import '../models/vehicle_details.dart';
 import '../services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:whatsapp_unilink/whatsapp_unilink.dart';
-import 'package:intl/intl.dart'; // For time-based greeting
 
 
 class VehicleDetailsScreen extends StatefulWidget {
@@ -294,11 +293,20 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                 ),
               )
                   : null,
+
               child: _buildImageCarousel(images),
             ),
             _buildImageGradient(colors),
             _buildImageIndicator(images),
-            if (images.length > 1) _buildThumbnailPreview(images),
+            // ✅ Thumbnail carousel at the bottom
+            if (images.length > 1)
+              Positioned(
+                bottom: -11, // Position at bottom
+                left: 0,
+                right: 0,
+                child: _buildThumbnailPreview(images),
+              ),
+
           ],
         ),
       ),
@@ -369,7 +377,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
           ),
         ),
         Positioned(
-          bottom: 20,
+          bottom: 40,
           left: 0,
           right: 0,
           child: _buildDotsIndicator(images.length, _currentPage, Theme.of(context).colorScheme),
