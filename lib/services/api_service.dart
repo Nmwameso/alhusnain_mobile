@@ -116,6 +116,53 @@ class ApiService {
   }
 
   /// **Submit Direct Import Request**
+  /// /// **Log Car Selection Activity**
+    Future<bool> logCarSelectionActivity({
+      required AuthProvider authProvider,
+      required String selectedDrivingCategory,
+      required String selectedMake,
+      required String selectedBodyType,
+      required String selectedFuel,
+      required double engineMin,
+      required double engineMax,
+    }) async {
+      final user = authProvider.currentUser;
+      final url = Uri.parse('$baseUrl/car-selection');
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? token = prefs.getString('api_token');
+
+      if (token == null || token.isEmpty) {
+        throw Exception('User is not authenticated');
+      }
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          "email": user?.email, // Replace with actual user ID
+          "selected_driving_category": selectedDrivingCategory,
+          "selected_make": selectedMake,
+          "selected_body_type": selectedBodyType,
+          "selected_fuel": selectedFuel,
+          "engine_range": {
+            "min": engineMin.round(),
+            "max": engineMax.round(),
+          },
+          "timestamp": DateTime.now().toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print("Car selection activity logged successfully");
+        return true;
+      } else {
+        print("Failed to log car selection activity: ${response.body}");
+        return false;
+      }
+    }
   /// **Submit Direct Import Request and Share via WhatsApp**
   Future<bool> submitDirectImport({
     required String fullName,

@@ -20,6 +20,7 @@ class SearchMetadata {
 class VehicleSearchPage extends StatefulWidget {
   final CarLayout carLayout;
   final VoidCallback onToggleLayout;
+  final String? selectedCategory;
   final String? selectedBrand;
   final String? selectedModel;
   final String? selectedColor;
@@ -32,6 +33,7 @@ class VehicleSearchPage extends StatefulWidget {
 
   const VehicleSearchPage({
     Key? key,
+    this.selectedCategory,
     this.selectedBrand,
     this.selectedModel,
     this.selectedColor,
@@ -68,6 +70,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
   final PagingController<int, Hit> _pagingController = PagingController(firstPageKey: 0);
 
   // Facet Lists
+  late final FacetList _drivingcategoryFacetList = _createFacetList('categories.Driving Category');
   late final FacetList _makeFacetList = _createFacetList('make');
   late final FacetList _modelFacetList = _createFacetList('model');
   late final FacetList _colorFacetList = _createFacetList('colour');
@@ -82,12 +85,14 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     return _productsSearcher.buildFacetList(
       filterState: _filterState,
       attribute: attribute,
+
     );
   }
 
   @override
   void initState() {
     super.initState();
+
     _productsSearcher.responses.listen((response) {
       if (mounted) setState(() {});
     });
@@ -97,18 +102,33 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyInitialFilters();
-      setState(() {});
     });
   }
 
   void _applyInitialFilters() {
+    _filterState.clear(); // ✅ Clear previous filters before applying new ones
+
     void applyFilter(String? value, String attribute, FacetList facetList) {
       if (value != null && value.isNotEmpty) {
         facetList.toggle(value);
+
+        // Debug: Check if value is correctly toggled
+        print("FacetList for $attribute after toggle: ${facetList.runtimeType}");
+
+
+
         selectedFilters[attribute] = value;
+
+        // ✅ Apply the filter to `_filterState`
+        _filterState.add(FilterGroupID.and(attribute), {Filter.facet(attribute, value)});
+
+        // Debug: Print the applied filters in _filterState
+
       }
     }
 
+
+    applyFilter(widget.selectedCategory, 'categories.Driving Category', _drivingcategoryFacetList);
     applyFilter(widget.selectedBrand, 'make', _makeFacetList);
     applyFilter(widget.selectedModel, 'model', _modelFacetList);
     applyFilter(widget.selectedColor, 'colour', _colorFacetList);
@@ -118,26 +138,16 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     applyFilter(widget.selectedDrive, 'drive', _driveFacetList);
     applyFilter(widget.selectedTrasmission, 'transm', _trasmissionFacetList);
     applyFilter(widget.selectedFeatures, 'features', _featuresFacetList);
+
+    print("Applied Filters:");
+    selectedFilters.forEach((key, value) {
+      print("$key: $value");
+    });
+
+
   }
 
 
-  // void _applyInitialFilters() {
-  //   _toggleIfNotNull(_makeFacetList, widget.selectedBrand);
-  //   _toggleIfNotNull(_modelFacetList, widget.selectedModel);
-  //   _toggleIfNotNull(_colorFacetList, widget.selectedColor);
-  //   _toggleIfNotNull(_yrFacetList, widget.selectedYear);
-  //   _toggleIfNotNull(_bodytypeFacetList, widget.selectedBodytype);
-  //   _toggleIfNotNull(_fuelFacetList, widget.selectedFuel);
-  //   _toggleIfNotNull(_driveFacetList, widget.selectedDrive);
-  //   _toggleIfNotNull(_trasmissionFacetList, widget.selectedTrasmission);
-  //   _toggleIfNotNull(_featuresFacetList, widget.selectedFeatures);
-  // }
-  //
-  // void _toggleIfNotNull(FacetList facetList, String? value) {
-  //   if (value != null && value.isNotEmpty) {
-  //     facetList.toggle(value);
-  //   }
-  // }
 
   Future<void> _fetchPage(int pageKey) async {
     try {
@@ -155,6 +165,7 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
           : _pagingController.appendPage(response.hits, pageKey + 1);
     } catch (error) {
       _pagingController.error = error;
+      print(error);
     }
   }
 
@@ -173,6 +184,8 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       padding: const EdgeInsets.all(16.0),
       child: ListView(
         children: [
+          _buildFacetDropdown('categories.Driving Category', 'categories.Driving Category', _drivingcategoryFacetList),
+          const SizedBox(height: 16),
           _buildFacetDropdown('Make', 'make', _makeFacetList),
           const SizedBox(height: 16),
           _buildFacetDropdown('Model', 'model', _modelFacetList),
@@ -208,17 +221,27 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
         itemBuilder: (context, index) {
           final entry = selectedFilters.entries.elementAt(index);
           return Chip(
-            label: Text('${_getAttributeDisplayName(entry.key)}: ${entry.value}'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            label: Text(
+              '${_getAttributeDisplayName(entry.key)}: ${entry.value}',
+              style: const TextStyle(color: Colors.white), // White text for contrast
+            ),
+            backgroundColor: Colors.green.shade600, // Green background
+            deleteIcon: const Icon(Icons.close, size: 18, color: Colors.red), // Red X icon
             onDeleted: () => _clearFilter(entry.key, entry.value),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20), // Smooth rounded edges
+              side: BorderSide(color: Colors.green.shade800), // Slight border for depth
+            ),
           );
         },
       ),
     );
   }
 
+
   String _getAttributeDisplayName(String attribute) {
     switch (attribute) {
+      case 'categories.Driving Category': return 'categories.Driving Category';
       case 'make': return 'Make';
       case 'model': return 'Model';
       case 'colour': return 'Color';
@@ -234,15 +257,28 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
   void _clearFilter(String attribute, String value) {
     final facetList = _getFacetListForAttribute(attribute);
+
     if (facetList != null) {
       facetList.toggle(value);
+
+      // ✅ Remove the specific filter from _filterState
+      _filterState.remove(FilterGroupID.and(attribute), {Filter.facet(attribute, value)});
+
+      // ✅ Cancel any previous debounce before starting a new one
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 300), () {
+        _pagingController.refresh();
+      });
+
+      // ✅ Finally, update the UI
       setState(() => selectedFilters.remove(attribute));
-      _pagingController.refresh();
     }
   }
 
+
   FacetList? _getFacetListForAttribute(String attribute) {
     switch (attribute) {
+      case 'categories.Driving Category': return _drivingcategoryFacetList;
       case 'make': return _makeFacetList;
       case 'model': return _modelFacetList;
       case 'colour': return _colorFacetList;
@@ -282,21 +318,36 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
   void _handleFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets, String? value) {
     if (value == null) return;
 
-    // Clear existing selection for this attribute
-    if (selectedFilters.containsKey(attribute)) {
-      facetList.toggle(selectedFilters[attribute]!);
-    }
+    setState(() {
+      // Clear previous selection
+      if (selectedFilters.containsKey(attribute)) {
+        facetList.toggle(selectedFilters[attribute]!);
+      }
 
-    facetList.toggle(value);
-    setState(() => selectedFilters[attribute] = value);
+      // Toggle new selection
+      facetList.toggle(value);
+      selectedFilters[attribute] = value;
+
+      // Refresh facets from `facetList`
+      facets.clear();
+
+    });
+
     _pagingController.refresh();
   }
+
+
 
   void _clearFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets) {
     if (selectedFilters.containsKey(attribute)) {
       facetList.toggle(selectedFilters[attribute]!);
       setState(() => selectedFilters.remove(attribute));
       _pagingController.refresh();
+
+      _debounce = Timer(const Duration(milliseconds: 300), () {
+        if (attribute.isEmpty) _filterState.clear();
+        _pagingController.refresh();
+      });
     }
   }
 
@@ -733,15 +784,16 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
   @override
   void dispose() {
+    super.dispose();
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     _productsSearcher.dispose();
     _filterState.dispose();
-    [_makeFacetList, _modelFacetList, _colorFacetList, _yrFacetList, _bodytypeFacetList]
+    [_drivingcategoryFacetList, _makeFacetList, _modelFacetList, _colorFacetList, _yrFacetList, _bodytypeFacetList]
         .forEach((f) => f.dispose());
     _pagingController.dispose();
-    super.dispose();
+
   }
 
 }
@@ -760,7 +812,10 @@ class _FacetDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedValue = facets.firstWhereOrNull((f) => f.isSelected)?.item.value;
+    final selectedFacet = facets.firstWhereOrNull((f) => f.isSelected);
+    final selectedValue = selectedFacet?.item.value;
+
+    print(selectedValue); // Debugging
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

@@ -62,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (context) => CarChooserScreen()));
               },
-              child: const Text("Use Car Chooser"),
+              child: const Text("Use Car Chooser", textAlign: TextAlign.center),
             ),
             TextButton(
               onPressed: () async {
@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }
               },
-              child: const Text("Proceed to Search"),
+              child: const Text("Proceed to Search", textAlign: TextAlign.center),
             ),
           ],
         );
@@ -164,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     backgroundColor: Colors.white,
                     elevation: 3,
                     labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-                    indicatorColor: Colors.blue.withOpacity(0.2),
+                    indicatorColor: Colors.green,
                     destinations: [
                       const NavigationDestination(
                         icon: Icon(Icons.home_outlined, size: 28),

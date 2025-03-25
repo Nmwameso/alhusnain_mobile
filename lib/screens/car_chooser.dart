@@ -1,6 +1,13 @@
-import 'package:ah_customer/screens/search_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/auth_provider.dart';
 import 'home_screen.dart';
+import 'search_screen.dart';
+import 'config.dart';
+
+import '../services/api_service.dart';
 
 class CarChooserScreen extends StatefulWidget {
   @override
@@ -8,143 +15,226 @@ class CarChooserScreen extends StatefulWidget {
 }
 
 class _CarChooserScreenState extends State<CarChooserScreen> {
-  String? selectedCategory;
-  String? selectedFuelType;
+  final FilterState _filterState = FilterState();
+  final HitsSearcher _productsSearcher = HitsSearcher(
+    applicationID: AlgoliaConfig.applicationId,
+    apiKey: AlgoliaConfig.apiKey,
+    indexName: AlgoliaConfig.indexName,
+  );
 
-  final List<Map<String, dynamic>> categories = [
-    {'label': 'Driving the Family', 'icon': Icons.family_restroom, 'query': "Driving the Family"},
-    {'label': 'Off-roading', 'icon': Icons.terrain, 'query': "Off-roading"},
-    {'label': 'Uber', 'icon': Icons.local_taxi, 'query': "UBER"},
-    {'label': 'Luxury', 'icon': Icons.diamond, 'query': "Luxury"},
-  ];
+  late FacetList _drivingcategoryFacetList = _createFacetList('categories.Driving Category');
+  late FacetList _makeFacetList = _createFacetList('make');
+  late FacetList _bodytypeFacetList = _createFacetList('body_type');
+  late FacetList _fuelFacetList = _createFacetList('fuel');
 
-  final List<Map<String, dynamic>> fuelTypes = [
-    {'label': 'Petrol', 'icon': Icons.local_gas_station},
-    {'label': 'Diesel', 'icon': Icons.ev_station},
-    {'label': 'Hybrid', 'icon': Icons.electric_car},
-  ];
+  RangeValues _selectedEngineRange = const RangeValues(300, 6000);
+
+  String? selectedDCategory;
+  String? selectedMake;
+  String? selectedBodyType;
+  String? selectedFuel;
+  int _currentStep = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    _productsSearcher.connectFilterState(_filterState);
+  }
+
+  FacetList _createFacetList(String attribute) {
+    return _productsSearcher.buildFacetList(
+      filterState: _filterState,
+      attribute: attribute,
+    );
+  }
+  void _logActivity() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final apiService = ApiService();
+
+    try {
+      bool success = await apiService.logCarSelectionActivity(
+        authProvider: authProvider,
+        selectedDrivingCategory: selectedDCategory ?? "",
+        selectedMake: selectedMake ?? "",
+        selectedBodyType: selectedBodyType ?? "",
+        selectedFuel: selectedFuel ?? "",
+        engineMin: _selectedEngineRange.start,
+        engineMax: _selectedEngineRange.end,
+      );
+
+      if (success) {
+        print("Car selection activity logged successfully!");
+      }
+    } catch (e) {
+      print("Error logging car selection: $e");
+    }
+  }
 
   void _navigateToSearch() {
-    if (selectedCategory == null) {
+    if (selectedDCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please select a Category to proceed.")),
+        const SnackBar(content: Text("Please select a Category to proceed.")),
       );
       return;
     }
 
-    String query = selectedCategory!;
-    if (selectedFuelType != null) {
-      query += " $selectedFuelType"; // ✅ Combine both if fuel type is selected
-    }
+    _logActivity(); // Log user activity before navigation
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => VehicleSearchPage(
+          selectedCategory: selectedDCategory,
+          selectedBrand: selectedMake,
+          selectedBodytype: selectedBodyType,
+          selectedFuel: selectedFuel,
           carLayout: CarLayout.grid,
           onToggleLayout: () {},
-          selectedBrand: query, // ✅ Pass the selection (Category + FuelType if available)
         ),
       ),
     );
   }
 
-
-  Widget _buildSelectionCard(String label, IconData icon, String? selectedValue, VoidCallback onTap) {
-    bool isSelected = label == selectedValue;
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        height: 140,
-        child: Card(
-          elevation: isSelected ? 6 : 2,
-          color: isSelected ? Colors.blue.shade100 : Colors.green,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: isSelected ? Colors.blue : Colors.grey.shade300, width: 2),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 40, color: isSelected ? Colors.blue : Colors.white),
-                SizedBox(height: 12),
-                Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-              ],
+  Widget _buildFacetStep(String title, FacetList facetList, String? selectedValue, Function(String?) onSelect) {
+    return StreamBuilder<List<SelectableFacet>>(
+      stream: facetList.facets,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const LinearProgressIndicator();
+        }
+        final facets = snapshot.data ?? [];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: facets.map((facet) {
+                return ChoiceChip(
+                  label: Text(facet.item.value, style: TextStyle(fontWeight: FontWeight.bold)),
+                  selected: selectedValue == facet.item.value,
+                  selectedColor: Colors.green,
+                  backgroundColor: Colors.grey[200],
+                  onSelected: (isSelected) {
+                    setState(() => onSelect(isSelected ? facet.item.value : null));
+                  },
+                );
+              }).toList(),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectionGrid(String title, List<Map<String, dynamic>> options, String? selectedValue, Function(String?) onSelect) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.2,
-          ),
-          itemCount: options.length,
-          itemBuilder: (context, index) {
-            return _buildSelectionCard(
-              options[index]['label'],
-              options[index]['icon'],
-              selectedValue,
-                  () => setState(() {
-                if (selectedValue == options[index]['label']) {
-                  onSelect(null); // ✅ Uncheck if tapped again
-                } else {
-                  onSelect(options[index]['label']);
-                }
-              }),
-            );
-          },
-        ),
-        SizedBox(height: 10),
-      ],
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Choose Your Car")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("1. What are you using the car for ?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            _buildSelectionGrid("Choose a Category:", categories, selectedCategory, (val) => selectedCategory = val),
-            SizedBox(height: 16),
-            Text("2. What's your preferred fuel type ?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            _buildSelectionGrid("Select Fuel Type:", fuelTypes, selectedFuelType, (val) => selectedFuelType = val),
-            SizedBox(height: 16),
-            Center(
-              child: ElevatedButton(
-                onPressed: _navigateToSearch,
+      appBar: AppBar(title: const Text("Choose Your Car")),
+      body: Stepper(
+        type: StepperType.vertical,
+        currentStep: _currentStep,
+        onStepContinue: () {
+          if (_currentStep == 0 && selectedDCategory == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Please select a Category to proceed."), backgroundColor: Colors.red),
+            );
+            return;
+          }
+          if (_currentStep == 4) {
+            _navigateToSearch();
+          } else {
+            setState(() => _currentStep += 1);
+          }
+        },
+        onStepCancel: () {
+          if (_currentStep > 0) {
+            setState(() => _currentStep -= 1);
+          }
+        },
+        controlsBuilder: (BuildContext context, ControlsDetails details) {
+          return Row(
+            children: [
+              ElevatedButton(
+                onPressed: details.onStepContinue,
                 style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   backgroundColor: Colors.green,
-                  minimumSize: Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: Text("Find My Car", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: const Text("Next", style: TextStyle(fontWeight: FontWeight.bold)),
               ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: details.onStepCancel,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  side: BorderSide(color: Colors.orange),
+                ),
+                child: const Text("Back", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+        steps: [
+          Step(
+            title: const Text("Select Category"),
+            content: _buildFacetStep("What are you using the car for?", _drivingcategoryFacetList, selectedDCategory, (val) {
+              setState(() {
+                selectedDCategory = val;
+                _filterState.clear();
+                if (val != null) {
+                  _filterState.add(FilterGroupID.and('category'),
+                      {Filter.facet('categories.Driving Category', val)});
+                }
+              });
+            }),
+            isActive: _currentStep >= 0,
+          ),
+          Step(
+            title: const Text("Body Type"),
+            content: _buildFacetStep("Select Body Type", _bodytypeFacetList, selectedBodyType, (val) => setState(() => selectedBodyType = val)),
+            isActive: _currentStep >= 1,
+          ),
+          Step(
+            title: const Text("Make"),
+            content: _buildFacetStep("Select Car Make", _makeFacetList, selectedMake, (val) => setState(() => selectedMake = val)),
+            isActive: _currentStep >= 2,
+          ),
+          Step(
+            title: const Text("Fuel Type"),
+            content: _buildFacetStep("Select Fuel Type", _fuelFacetList, selectedFuel, (val) => setState(() => selectedFuel = val)),
+            isActive: _currentStep >= 3,
+          ),
+          Step(
+            title: const Text("Engine Capacity"),
+            content: Column(
+              children: [
+                Text(
+                  "Select Engine Capacity",
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                RangeSlider(
+                  values: _selectedEngineRange,
+                  min: 300,
+                  max: 6000,
+                  divisions: 57,
+                  labels: RangeLabels(
+                    _selectedEngineRange.start.round().toString(),
+                    _selectedEngineRange.end.round().toString(),
+                  ),
+                  onChanged: (values) => setState(() => _selectedEngineRange = values),
+                  activeColor: Colors.green, // Set slider color to green
+                ),
+              ],
             ),
-          ],
-        ),
+            isActive: _currentStep >= 4,
+          ),
+
+        ],
       ),
     );
   }

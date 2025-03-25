@@ -4,13 +4,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../models/user_model.dart';
-import '../services/api_service.dart'; // ✅ Import ApiService
+import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final ApiService _apiService = ApiService(); // ✅ Use ApiService
+  final ApiService _apiService = ApiService();
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -22,7 +24,7 @@ class AuthProvider with ChangeNotifier {
     _loadUserFromPrefs();
   }
 
-  /// ✅ Login with Google & Send Data to API
+  /// ✅ Login with Google & Send Data to API with Location Data
   Future<bool> loginWithGoogle(BuildContext context) async {
     try {
       _isLoading = true;
@@ -48,7 +50,10 @@ class AuthProvider with ChangeNotifier {
         _currentUser = UserModel.fromFirebaseUser(user);
         notifyListeners();
 
-        final response = await _sendUserDataToApi(user);
+        // ✅ Get user location
+        Map<String, dynamic> locationData = await _getUserLocation();
+
+        final response = await _sendUserDataToApi(user, locationData);
         _isLoading = false;
         notifyListeners();
 
@@ -82,9 +87,75 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// ✅ Get User Location (Latitude, Longitude, City, Area)
+
+  Future<Map<String, dynamic>> _getUserLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print("Location services are disabled.");
+        return {};
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print("Location permissions are denied.");
+          return {};
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print("Location permissions are permanently denied.");
+        return {};
+      }
+
+      // Get precise location
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.bestForNavigation, // Highest accuracy
+      );
+
+      double latitude = position.latitude;
+      double longitude = position.longitude;
+
+      // Reverse geocoding to get city, area, and country
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+
+      // Ensure placemark data exists
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String city = place.locality ?? "Unknown City";
+        String area = place.subLocality ?? "Unknown Area";
+        String country = place.country ?? "Unknown Country";
+
+        return {
+          'latitude': latitude,
+          'longitude': longitude,
+          'city': city,
+          'area': area,
+          'country': country,
+        };
+      } else {
+        print("No placemark data found.");
+        return {
+          'latitude': latitude,
+          'longitude': longitude,
+          'city': "Unknown City",
+          'area': "Unknown Area",
+          'country': "Unknown Country",
+        };
+      }
+    } catch (e) {
+      print("Error fetching location: $e");
+      return {};
+    }
+  }
+
+
   /// ✅ Send User Data to API & Save Token
-  Future<bool> _sendUserDataToApi(User user) async {
-    final String apiUrl = '${_apiService.baseUrl}/login/google'; // ✅ Use ApiService baseUrl
+  Future<bool> _sendUserDataToApi(User user, Map<String, dynamic> locationData) async {
+    final String apiUrl = '${_apiService.baseUrl}/login/google';
 
     try {
       final response = await http.post(
@@ -95,6 +166,11 @@ class AuthProvider with ChangeNotifier {
           'email': user.email,
           'photo_url': user.photoURL,
           'google_uid': user.uid,
+          'latitude': locationData['latitude'],
+          'longitude': locationData['longitude'],
+          'city': locationData['city'],
+          'area': locationData['area'],
+          'country': locationData['country'], // ✅ Include country
         }),
       );
 
@@ -102,7 +178,6 @@ class AuthProvider with ChangeNotifier {
         final data = jsonDecode(response.body);
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setString('api_token', data['token']);
-        // ✅ Set `isLoggedIn` to true
         await prefs.setBool('isLoggedIn', true);
         return true;
       } else {
@@ -114,6 +189,7 @@ class AuthProvider with ChangeNotifier {
       return false;
     }
   }
+
 
   /// ✅ Save User Data to SharedPreferences
   Future<void> _saveUserToPrefs(UserModel user) async {
@@ -138,7 +214,7 @@ class AuthProvider with ChangeNotifier {
     await _googleSignIn.signOut();
     await _auth.signOut();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // ✅ Clear all stored user data
+    await prefs.clear();
 
     _currentUser = null;
     notifyListeners();
@@ -162,7 +238,7 @@ class AuthProvider with ChangeNotifier {
     searchHistory.remove(searchTerm);
     searchHistory.insert(0, searchTerm);
     if (searchHistory.length > 10) {
-      searchHistory = searchHistory.sublist(0, 10); // Keep only the last 10 searches
+      searchHistory = searchHistory.sublist(0, 10);
     }
 
     await prefs.setStringList('search_history', searchHistory);
@@ -173,5 +249,4 @@ class AuthProvider with ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getStringList('search_history') ?? [];
   }
-
 }

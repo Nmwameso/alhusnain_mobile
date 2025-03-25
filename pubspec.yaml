@@ -66,6 +66,8 @@ dependencies:
   awesome_notifications: ^0.10.1
   flutter_gemini: ^3.0.0
   google_generative_ai: ^0.4.6
+  geolocator: ^13.0.3
+  geocoding: ^3.0.0
 
 
 dev_dependencies:

@@ -23,18 +23,18 @@ class _FiltersScreenState extends State<FiltersScreen> {
     indexName: AlgoliaConfig.indexName,
   );
 
-
-  // Facet lists with helper method
-  late final FacetList _makeFacetList = _createFacetList('make');
-  late final FacetList _modelFacetList = _createFacetList('model');
-  late final FacetList _colorFacetList = _createFacetList('colour');
-  late final FacetList _yrFacetList = _createFacetList('yr_of_mfg');
-  late final FacetList _bodytypeFacetList = _createFacetList('body_type');
-  late final FacetList _fuelFacetList = _createFacetList('fuel');
-  late final FacetList _driveFacetList = _createFacetList('drive');
-  late final FacetList _trasmissionFacetList = _createFacetList('transm');
-  late final FacetList _featuresFacetList = _createFacetList('features');
-
+  late final Map<String, FacetList> _facetLists = {
+    'Categories': _createFacetList('categories.Driving Category'),
+    'Make': _createFacetList('make'),
+    'Model': _createFacetList('model'),
+    'Colour': _createFacetList('colour'),
+    'Year': _createFacetList('yr_of_mfg'),
+    'Body Type': _createFacetList('body_type'),
+    'Fuel': _createFacetList('fuel'),
+    'Drive': _createFacetList('drive'),
+    'Transmission': _createFacetList('transm'),
+    'Features': _createFacetList('features'),
+  };
 
   FacetList _createFacetList(String attribute) {
     return _productsSearcher.buildFacetList(
@@ -43,7 +43,6 @@ class _FiltersScreenState extends State<FiltersScreen> {
     );
   }
 
-
   @override
   void initState() {
     super.initState();
@@ -51,40 +50,27 @@ class _FiltersScreenState extends State<FiltersScreen> {
   }
 
   void _applyFilters() async {
-    final facetsMake = await _makeFacetList.facets.first;
-    final facetsModel = await _modelFacetList.facets.first;
-    final facetsColor = await _colorFacetList.facets.first;
-    final facetsYear = await _yrFacetList.facets.first;
-    final facetsBodytype = await _bodytypeFacetList.facets.first;
-    final facetsFuel = await _fuelFacetList.facets.first;
-    final facetsDrive = await _driveFacetList.facets.first;
-    final facetsTrasmission = await _trasmissionFacetList.facets.first;
-    final facetsFeatures = await _featuresFacetList.facets.first;
+    final facetResults = await Future.wait(
+      _facetLists.values.map((facetList) => facetList.facets.first),
+    );
 
-    final selectedBrand = facetsMake.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedModel = facetsModel.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedColor = facetsColor.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedYear = facetsYear.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedBodytype = facetsBodytype.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedFuel = facetsFuel.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedDrive = facetsDrive.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedTrasmission = facetsTrasmission.firstWhereOrNull((f) => f.isSelected)?.item.value;
-    final selectedFeatures = facetsFeatures.firstWhereOrNull((f) => f.isSelected)?.item.value;
+    final selectedValues = facetResults.map((facets) =>
+    facets.firstWhereOrNull((f) => f.isSelected)?.item.value).toList();
 
-    // ✅ Navigate directly to VehicleSearchPage instead of pop()
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => VehicleSearchPage(
-          selectedBrand: selectedBrand,
-          selectedModel: selectedModel,
-          selectedColor: selectedColor,
-          selectedYear: selectedYear,
-          selectedBodytype: selectedBodytype,
-          selectedFuel: selectedFuel,
-          selectedDrive: selectedDrive,
-          selectedTrasmission: selectedTrasmission,
-          selectedFeatures: selectedFeatures,
+          selectedCategory: selectedValues[0],
+          selectedBrand: selectedValues[1],
+          selectedModel: selectedValues[2],
+          selectedColor: selectedValues[3],
+          selectedYear: selectedValues[4],
+          selectedBodytype: selectedValues[5],
+          selectedFuel: selectedValues[6],
+          selectedDrive: selectedValues[7],
+          selectedTrasmission: selectedValues[8],
+          selectedFeatures: selectedValues[9],
           carLayout: widget.carLayout,
           onToggleLayout: widget.onToggleLayout,
         ),
@@ -95,50 +81,43 @@ class _FiltersScreenState extends State<FiltersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Filters')),
+      appBar: AppBar(
+        title: const Text('Filters', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+      ),
       body: Column(
         children: [
-          // Scrollable filter list
           Expanded(
             child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(), // iOS-style scroll
+              physics: const BouncingScrollPhysics(),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFacetDropdown('Make', _makeFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Model', _modelFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Colour', _colorFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Year', _yrFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Body type', _bodytypeFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Fuel', _fuelFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Drive', _driveFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Transmission', _trasmissionFacetList),
-                  const SizedBox(height: 16),
-                  _buildFacetDropdown('Features', _featuresFacetList),
-                  const SizedBox(height: 32), // Bottom padding
-                ],
+                children: _facetLists.entries.map((entry) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: _buildFacetDropdown(entry.key, entry.value),
+                  );
+                }).toList(),
               ),
             ),
           ),
-
-          // Fixed bottom button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _applyFilters,
-                child: const Text("Apply Filters"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text("Apply Filters", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
@@ -162,26 +141,39 @@ class _FiltersScreenState extends State<FiltersScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              value: selectedValue,
-              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 12)),
-              hint: Text('Select $title', style: TextStyle(color: Colors.grey[600])),
-              items: facets.map((selectable) {
-                final facet = selectable.item;
-                return DropdownMenuItem(value: facet.value, child: Text(facet.value));
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  for (var f in facets.where((f) => f.isSelected)) {
-                    facetList.toggle(f.item.value);
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                value: selectedValue,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                  contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                ),
+                hint: Text('Select $title', style: TextStyle(color: Colors.grey[600])),
+                items: facets.map((selectable) {
+                  final facet = selectable.item;
+                  return DropdownMenuItem(value: facet.value, child: Text(facet.value));
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    facetList.toggle(value);
+                    setState(() {});
                   }
-                  facetList.toggle(value);
-                  setState(() {});
-                }
-              },
+                },
+              ),
             ),
           ],
         );
