@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
 
 class DirectImportScreen extends StatefulWidget {
+  const DirectImportScreen({Key? key}) : super(key: key);
   @override
   _DirectImportScreenState createState() => _DirectImportScreenState();
 }

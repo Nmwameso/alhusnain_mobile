@@ -1,21 +1,15 @@
+// ✅ Fully Optimized VehicleSearchPage with UI
 import 'dart:async';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'VehicleDetailsScreen.dart';
-import 'chat_screen.dart';
 import 'config.dart';
-import 'home_screen.dart'; // Import for `firstWhereOrNull`
-import 'package:connectivity_plus/connectivity_plus.dart';
-
-class SearchMetadata {
-  final int nbHits;
-  const SearchMetadata(this.nbHits);
-  factory SearchMetadata.fromResponse(SearchResponse response) => SearchMetadata(response.nbHits);
-}
+import 'home_screen.dart';
+import '../services/api_service.dart';
 
 class VehicleSearchPage extends StatefulWidget {
   final CarLayout carLayout;
@@ -49,6 +43,8 @@ class VehicleSearchPage extends StatefulWidget {
 
   @override
   _VehicleSearchPageState createState() => _VehicleSearchPageState();
+
+
 }
 
 class _VehicleSearchPageState extends State<VehicleSearchPage> {
@@ -57,96 +53,112 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
   Timer? _debounce;
   static const int _pageSize = 8;
   Map<String, String> selectedFilters = {};
+  bool restrictToMombasa = false;
 
-  // Algolia Configuration
+
   final HitsSearcher _productsSearcher = HitsSearcher(
     applicationID: AlgoliaConfig.applicationId,
     apiKey: AlgoliaConfig.apiKey,
     indexName: AlgoliaConfig.indexName,
   );
 
-  final GlobalKey<ScaffoldState> _mainScaffoldKey = GlobalKey();
   final _filterState = FilterState();
-  final PagingController<int, Hit> _pagingController = PagingController(firstPageKey: 0);
+  final _pagingController = PagingController<int, Hit>(firstPageKey: 0);
 
-  // Facet Lists
-  late final FacetList _drivingcategoryFacetList = _createFacetList('categories.Driving Category');
-  late final FacetList _makeFacetList = _createFacetList('make');
-  late final FacetList _modelFacetList = _createFacetList('model');
-  late final FacetList _colorFacetList = _createFacetList('colour');
-  late final FacetList _yrFacetList = _createFacetList('yr_of_mfg');
-  late final FacetList _bodytypeFacetList = _createFacetList('body_type');
-  late final FacetList _fuelFacetList = _createFacetList('fuel');
-  late final FacetList _driveFacetList = _createFacetList('drive');
-  late final FacetList _trasmissionFacetList = _createFacetList('transm');
-  late final FacetList _featuresFacetList = _createFacetList('features');
+  final List<String> _filterAttributes = [
+    'categories.Driving Category', 'make', 'model', 'colour', 'yr_of_mfg',
+    'body_type', 'fuel', 'drive', 'transm', 'features'
+  ];
 
-  FacetList _createFacetList(String attribute) {
-    return _productsSearcher.buildFacetList(
-      filterState: _filterState,
-      attribute: attribute,
-
-    );
-  }
+  late final Map<String, FacetList> _facetLists = {
+    for (var attr in _filterAttributes)
+      attr: _productsSearcher.buildFacetList(filterState: _filterState, attribute: attr)
+  };
 
   @override
   void initState() {
     super.initState();
-
-    _productsSearcher.responses.listen((response) {
-      if (mounted) setState(() {});
-    });
-
+    _checkLocationRestriction();
+    _productsSearcher.responses.listen((_) => setState(() {}));
     _productsSearcher.connectFilterState(_filterState);
     _pagingController.addPageRequestListener(_fetchPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyInitialFilters());
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyInitialFilters();
-    });
+  Future<void> _checkLocationRestriction() async {
+    final prefs = await SharedPreferences.getInstance();
+    restrictToMombasa = prefs.getBool('location_denied') ?? false;
+
+    if (restrictToMombasa) {
+      _filterState.add(FilterGroupID.and('location'), {
+        Filter.facet('location', 'MOMBASA'),
+      });
+    }
   }
 
   void _applyInitialFilters() {
-    _filterState.clear(); // ✅ Clear previous filters before applying new ones
-
-    void applyFilter(String? value, String attribute, FacetList facetList) {
-      if (value != null && value.isNotEmpty) {
-        facetList.toggle(value);
-
-        // Debug: Check if value is correctly toggled
-        print("FacetList for $attribute after toggle: ${facetList.runtimeType}");
-
-
-
-        selectedFilters[attribute] = value;
-
-        // ✅ Apply the filter to `_filterState`
-        _filterState.add(FilterGroupID.and(attribute), {Filter.facet(attribute, value)});
-
-        // Debug: Print the applied filters in _filterState
-
+    _filterState.clear();
+    Map<String, String> newFilters = {};
+    for (var entry in {
+      'categories.Driving Category': widget.selectedCategory,
+      'make': widget.selectedBrand,
+      'model': widget.selectedModel,
+      'colour': widget.selectedColor,
+      'yr_of_mfg': widget.selectedYear,
+      'body_type': widget.selectedBodytype,
+      'fuel': widget.selectedFuel,
+      'drive': widget.selectedDrive,
+      'transm': widget.selectedTrasmission,
+      'features': widget.selectedFeatures
+    }.entries) {
+      if (entry.value != null && entry.value!.isNotEmpty) {
+        _facetLists[entry.key]?.toggle(entry.value!);
+        _filterState.add(FilterGroupID.and(entry.key), {Filter.facet(entry.key, entry.value!)});
+        newFilters[entry.key] = entry.value!;
       }
     }
-
-
-    applyFilter(widget.selectedCategory, 'categories.Driving Category', _drivingcategoryFacetList);
-    applyFilter(widget.selectedBrand, 'make', _makeFacetList);
-    applyFilter(widget.selectedModel, 'model', _modelFacetList);
-    applyFilter(widget.selectedColor, 'colour', _colorFacetList);
-    applyFilter(widget.selectedYear, 'yr_of_mfg', _yrFacetList);
-    applyFilter(widget.selectedBodytype, 'body_type', _bodytypeFacetList);
-    applyFilter(widget.selectedFuel, 'fuel', _fuelFacetList);
-    applyFilter(widget.selectedDrive, 'drive', _driveFacetList);
-    applyFilter(widget.selectedTrasmission, 'transm', _trasmissionFacetList);
-    applyFilter(widget.selectedFeatures, 'features', _featuresFacetList);
-
-    print("Applied Filters:");
-    selectedFilters.forEach((key, value) {
-      print("$key: $value");
-    });
-
-
+    setState(() => selectedFilters = newFilters);
   }
 
+  void _handleFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets, String? value) {
+    if (value == null) return;
+
+    if (selectedFilters.containsKey(attribute)) {
+      final previousValue = selectedFilters[attribute]!;
+      if (previousValue == value) return; // same value, do nothing
+      facetList.toggle(previousValue);
+      _filterState.remove(FilterGroupID.and(attribute), {Filter.facet(attribute, previousValue)});
+    }
+
+    facetList.toggle(value);
+    _filterState.add(FilterGroupID.and(attribute), {Filter.facet(attribute, value)});
+
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _pagingController.refresh();
+    });
+
+    setState(() {
+      selectedFilters[attribute] = value;
+    });
+  }
+
+  void _clearFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets) {
+    if (!selectedFilters.containsKey(attribute)) return;
+
+    final previousValue = selectedFilters[attribute]!;
+    facetList.toggle(previousValue);
+    _filterState.remove(FilterGroupID.and(attribute), {Filter.facet(attribute, previousValue)});
+
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _pagingController.refresh();
+    });
+
+    setState(() {
+      selectedFilters.remove(attribute);
+    });
+  }
 
 
   Future<void> _fetchPage(int pageKey) async {
@@ -156,16 +168,13 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
         page: pageKey,
         hitsPerPage: _pageSize,
       ));
-
-      final response = await _productsSearcher.responses.first;
+      final response = await _productsSearcher.responses.take(1).first;
       final isLastPage = response.hits.length < _pageSize;
-
       isLastPage
           ? _pagingController.appendLastPage(response.hits)
           : _pagingController.appendPage(response.hits, pageKey + 1);
     } catch (error) {
       _pagingController.error = error;
-      print(error);
     }
   }
 
@@ -177,180 +186,36 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     });
   }
 
-  // Filter UI Components
-  Widget _filters(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Filters')),
-    body: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: ListView(
+  Widget _filters(BuildContext context, ScrollController controller) {
+    return SafeArea(
+      child: Column(
         children: [
-          _buildFacetDropdown('categories.Driving Category', 'categories.Driving Category', _drivingcategoryFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Make', 'make', _makeFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Model', 'model', _modelFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Colour', 'colour', _colorFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Year', 'yr_of_mfg', _yrFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Body type', 'body_type', _bodytypeFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Fuel', 'fuel', _fuelFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Drive', 'drive', _driveFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Transmission', 'transm', _trasmissionFacetList),
-          const SizedBox(height: 16),
-          _buildFacetDropdown('Features', 'features', _featuresFacetList),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Filters', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: controller,
+              padding: const EdgeInsets.all(16),
+              itemCount: _filterAttributes.length,
+              itemBuilder: (context, index) {
+                final attr = _filterAttributes[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildFacetDropdown(
+                    attr,
+                    attr,
+                    _facetLists[attr]!,
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
-    ),
-  );
-
-  Widget _buildSelectedFilters() {
-    if (selectedFilters.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: 60,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: selectedFilters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final entry = selectedFilters.entries.elementAt(index);
-          return Chip(
-            label: Text(
-              '${_getAttributeDisplayName(entry.key)}: ${entry.value}',
-              style: const TextStyle(color: Colors.white), // White text for contrast
-            ),
-            backgroundColor: Colors.green.shade600, // Green background
-            deleteIcon: const Icon(Icons.close, size: 18, color: Colors.red), // Red X icon
-            onDeleted: () => _clearFilter(entry.key, entry.value),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20), // Smooth rounded edges
-              side: BorderSide(color: Colors.green.shade800), // Slight border for depth
-            ),
-          );
-        },
-      ),
     );
   }
-
-
-  String _getAttributeDisplayName(String attribute) {
-    switch (attribute) {
-      case 'categories.Driving Category': return 'categories.Driving Category';
-      case 'make': return 'Make';
-      case 'model': return 'Model';
-      case 'colour': return 'Color';
-      case 'yr_of_mfg': return 'Year';
-      case 'body_type': return 'Body Type';
-      case 'fuel': return 'Fuel';
-      case 'drive': return 'Drive';
-      case 'transm': return 'Transmission';
-      case 'features': return 'Features';
-      default: return attribute;
-    }
-  }
-
-  void _clearFilter(String attribute, String value) {
-    final facetList = _getFacetListForAttribute(attribute);
-
-    if (facetList != null) {
-      facetList.toggle(value);
-
-      // ✅ Remove the specific filter from _filterState
-      _filterState.remove(FilterGroupID.and(attribute), {Filter.facet(attribute, value)});
-
-      // ✅ Cancel any previous debounce before starting a new one
-      _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 300), () {
-        _pagingController.refresh();
-      });
-
-      // ✅ Finally, update the UI
-      setState(() => selectedFilters.remove(attribute));
-    }
-  }
-
-
-  FacetList? _getFacetListForAttribute(String attribute) {
-    switch (attribute) {
-      case 'categories.Driving Category': return _drivingcategoryFacetList;
-      case 'make': return _makeFacetList;
-      case 'model': return _modelFacetList;
-      case 'colour': return _colorFacetList;
-      case 'yr_of_mfg': return _yrFacetList;
-      case 'body_type': return _bodytypeFacetList;
-      case 'fuel': return _fuelFacetList;
-      case 'drive': return _driveFacetList;
-      case 'transm': return _trasmissionFacetList;
-      case 'features': return _featuresFacetList;
-      default: return null;
-    }
-  }
-  Widget _buildFacetDropdown(String title, String attribute, FacetList facetList) {
-    return StreamBuilder<List<SelectableFacet>>(
-      stream: facetList.facets,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const LinearProgressIndicator();
-        final facets = snapshot.data!;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _FacetDropdown(
-              facets: facets,
-              title: title,
-              onChanged: (value) => _handleFacetSelection(attribute, facetList, facets, value),
-              onClear: () => _clearFacetSelection(attribute, facetList, facets),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _handleFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets, String? value) {
-    if (value == null) return;
-
-    setState(() {
-      // Clear previous selection
-      if (selectedFilters.containsKey(attribute)) {
-        facetList.toggle(selectedFilters[attribute]!);
-      }
-
-      // Toggle new selection
-      facetList.toggle(value);
-      selectedFilters[attribute] = value;
-
-      // Refresh facets from `facetList`
-      facets.clear();
-
-    });
-
-    _pagingController.refresh();
-  }
-
-
-
-  void _clearFacetSelection(String attribute, FacetList facetList, List<SelectableFacet> facets) {
-    if (selectedFilters.containsKey(attribute)) {
-      facetList.toggle(selectedFilters[attribute]!);
-      setState(() => selectedFilters.remove(attribute));
-      _pagingController.refresh();
-
-      _debounce = Timer(const Duration(milliseconds: 300), () {
-        if (attribute.isEmpty) _filterState.clear();
-        _pagingController.refresh();
-      });
-    }
-  }
-
   Widget _buildSearchField() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -359,13 +224,12 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
         focusNode: _focusNode,
         decoration: InputDecoration(
           hintText: 'Search vehicles...',
-          prefixIcon: Icon(Icons.search, color: Colors.blueGrey),
+          prefixIcon: const Icon(Icons.search, color: Colors.blueGrey),
           suffixIcon: IconButton(
-            icon: Icon(Icons.clear),
+            icon: const Icon(Icons.clear),
             onPressed: () {
               _controller.clear();
               _onSearchChanged('');
-
             },
           ),
           border: OutlineInputBorder(
@@ -374,13 +238,65 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
           ),
           filled: true,
           fillColor: Colors.grey[100],
-          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
         ),
         onChanged: _onSearchChanged,
       ),
     );
   }
 
+  Widget _buildSelectedFilters() {
+    if (selectedFilters.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 60,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: selectedFilters.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final entry = selectedFilters.entries.elementAt(index);
+          return Chip(
+            label: Text('${entry.key}: ${entry.value}', style: const TextStyle(color: Colors.white)),
+            backgroundColor: Colors.green.shade600,
+            deleteIcon: const Icon(Icons.close, color: Colors.white),
+            onDeleted: () => _clearFacetSelection(entry.key, _facetLists[entry.key]!, []),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildResultsGrid() {
+    return PagedGridView<int, Hit>(
+      pagingController: _pagingController,
+      shrinkWrap: true, // ✅ Prevents height constraint issue
+      physics: BouncingScrollPhysics(), // ✅ Allows smooth scrolling
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.8,
+      ),
+      builderDelegate: PagedChildBuilderDelegate<Hit>(
+        itemBuilder: (context, item, index) => _buildVehicleCard(item),
+        firstPageProgressIndicatorBuilder: (_) => _buildShimmerLoading(),
+        noItemsFoundIndicatorBuilder: (_) => _buildEmptyState(),
+      ),
+    );
+  }
+
+  Widget _buildResultsList() {
+    return PagedListView<int, Hit>(
+      pagingController: _pagingController,
+      physics: BouncingScrollPhysics(), // ✅ Ensures smooth scrolling
+      builderDelegate: PagedChildBuilderDelegate<Hit>(
+        itemBuilder: (context, item, index) => _buildHorizontalCarCard(item),
+        firstPageProgressIndicatorBuilder: (_) => _buildShimmerLoading(),
+        noItemsFoundIndicatorBuilder: (_) => _buildEmptyState(),
+      ),
+    );
+  }
   Widget _buildHorizontalCarCard(Hit vehicle) {
     return Card(
       //
@@ -390,7 +306,19 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       surfaceTintColor: Colors.white,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
+        onTap: () async {
+          final apiService = ApiService();
+          await apiService.logCustomerEvent(
+            eventType: 'viewed_vehicle_details',
+            metadata: {
+              'vehicle_id': vehicle['vehicle_id'].toString(),
+              'make': vehicle['make'],
+              'model': vehicle['model'],
+              'fuel': vehicle['fuel'],
+              'year': vehicle['yr_of_mfg'],
+              'origin': 'Search page',
+            },
+          );
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -450,47 +378,6 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _buildResultsGrid() {
-    return PagedGridView<int, Hit>(
-      pagingController: _pagingController,
-      shrinkWrap: true, // ✅ Prevents height constraint issue
-      physics: BouncingScrollPhysics(), // ✅ Allows smooth scrolling
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.8,
-      ),
-      builderDelegate: PagedChildBuilderDelegate<Hit>(
-        itemBuilder: (context, item, index) => _buildVehicleCard(item),
-        firstPageProgressIndicatorBuilder: (_) => _buildShimmerLoading(),
-        noItemsFoundIndicatorBuilder: (_) => _buildEmptyState(),
-      ),
-    );
-  }
-
-  Widget _buildResultsList() {
-    return PagedListView<int, Hit>(
-      pagingController: _pagingController,
-      physics: BouncingScrollPhysics(), // ✅ Ensures smooth scrolling
-      builderDelegate: PagedChildBuilderDelegate<Hit>(
-        itemBuilder: (context, item, index) => _buildHorizontalCarCard(item),
-        firstPageProgressIndicatorBuilder: (_) => _buildShimmerLoading(),
-        noItemsFoundIndicatorBuilder: (_) => _buildEmptyState(),
-      ),
-    );
-  }
-
   Widget _buildVehicleCard(Hit vehicle) {
     return Card(
       elevation: 3,
@@ -499,7 +386,18 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       surfaceTintColor: Colors.white,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
+        onTap: () async {
+          final apiService = ApiService();
+          await apiService.logCustomerEvent(
+            eventType: 'viewed_vehicle_details',
+            metadata: {
+              'vehicle_id': vehicle['vehicle_id'].toString(),
+              'make': vehicle['make'],
+              'model': vehicle['model'],
+              'fuel': vehicle['fuel'],
+              'year': vehicle['yr_of_mfg'],
+            },
+          );
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -581,143 +479,118 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
       ),
     );
   }
-
+  Widget _buildInfoRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
+      ],
+    );
+  }
   Widget _buildShimmerLoading() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: SizedBox( // Restricts height to prevent overflow
-        height: 300, // Adjust this value as needed
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Shimmer.fromColors(
+        baseColor: Colors.green,
+        highlightColor: Colors.red.shade300,
         child: GridView.builder(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 6, // Number of shimmer boxes
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, // ✅ Same 2 columns as your vehicle grid
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            childAspectRatio: 0.75,
+            childAspectRatio: 0.8, // ✅ Match vehicle card ratio
           ),
-          itemCount: 6,
-          physics: NeverScrollableScrollPhysics(), // ✅ Prevents scrolling when loading
-          shrinkWrap: true, // ✅ Ensures it fits inside a Column
-          itemBuilder: (_, __) => Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ✅ Simulated Image Loading
-                Container(
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+          itemBuilder: (_, index) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Car Image Placeholder
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade300,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.directions_car_filled_sharp, size: 100, color: Colors.red),
+                      ),
+                    ),
                   ),
-                ),
-                SizedBox(height: 10),
-
-                // ✅ Simulated Text Loading
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(height: 14, width: 120, color: Colors.white), // Title
-                      SizedBox(height: 8),
-                      Container(height: 12, width: 80, color: Colors.white), // Subtitle
-                      SizedBox(height: 8),
-                      Container(height: 12, width: 60, color: Colors.white), // Price
-                      SizedBox(height: 8),
-                      Container(height: 10, width: 100, color: Colors.white), // Extra Details
-                    ],
+                  // Car Details Placeholder
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(height: 14, width: double.infinity, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Container(height: 12, width: 80, color: Colors.grey.shade300),
+                        const SizedBox(height: 8),
+                        Container(height: 12, width: 60, color: Colors.grey.shade300),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-          SizedBox(height: 16),
-          Text('No vehicles found',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-          SizedBox(height: 8),
-          Text('Try different search terms',
-              style: TextStyle(color: Colors.grey[500])),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildErrorState(BuildContext context, String error) {
-    return FutureBuilder<List<ConnectivityResult>>(
-      future: Connectivity().checkConnectivity(),
+  Widget _buildEmptyState() => const Center(child: Text('No results found.'));
+
+  Widget _buildFacetDropdown(String title, String attribute, FacetList facetList) {
+    return StreamBuilder<List<SelectableFacet>>(
+      stream: facetList.facets,
       builder: (context, snapshot) {
-        bool isOffline = snapshot.hasData &&
-            snapshot.data!.isNotEmpty &&
-            snapshot.data!.first == ConnectivityResult.none;
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        final facets = snapshot.data!;
+        final selectedFacet = facets.firstWhereOrNull((f) => f.isSelected);
+        final selectedValue = selectedFacet?.item.value;
 
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isOffline ? Icons.wifi_off : Icons.error_outline,
-                  size: 48,
-                  color: Colors.red,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  isOffline ? 'No Internet Connection' : 'Connection Error',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.red,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isOffline
-                      ? 'Please check your internet connection and try again.'
-                      : error,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: isOffline
-                      ? null
-                      : () {
-                    _pagingController.refresh();
-                    _fetchPage(0);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    backgroundColor: isOffline
-                        ? Colors.grey
-                        : Theme.of(context).colorScheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: double.infinity),
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                value: selectedValue,
+                hint: Text("Select $title"), // ✅ Dynamic placeholder
+                items: facets.map((f) {
+                  return DropdownMenuItem(
+                    value: f.item.value,
+                    child: Text(
+                      f.item.value,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  icon: const Icon(Icons.refresh, size: 20),
-                  label: const Text('Try Again'),
+                  );
+                }).toList(),
+                onChanged: (val) => _handleFacetSelection(attribute, facetList, facets, val),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         );
       },
     );
@@ -726,57 +599,33 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _mainScaffoldKey,
       appBar: AppBar(
         title: const Text('Vehicle Search'),
-        elevation: 0,
         actions: [
           IconButton(
-            onPressed: () => _mainScaffoldKey.currentState?.openEndDrawer(),
-            icon: const Icon(Icons.filter_list_sharp),
-            tooltip: 'Filters',
-          ),
-          IconButton(
-            icon: const Icon(Icons.chat),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ChatScreen(),
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              builder: (context) => DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.5, // ✅ Half screen
+                minChildSize: 0.3,
+                maxChildSize: 0.5, // ✅ Limit to half
+                builder: (_, controller) => _filters(context, controller),
               ),
             ),
-          ),
+          )
         ],
-      ),
-      endDrawer: Drawer(
-        child: _filters(context),
       ),
       body: Column(
         children: [
           _buildSearchField(),
           _buildSelectedFilters(),
-          Expanded(
-            child: StreamBuilder<SearchResponse>(
-              stream: _productsSearcher.responses,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _buildShimmerLoading();
-                }
-
-                if (snapshot.hasError) {
-                  return _buildErrorState(context, snapshot.error.toString());
-                }
-
-                final results = snapshot.data?.hits ?? [];
-                if (results.isEmpty) {
-                  return _buildEmptyState();
-                }
-
-                return widget.carLayout == CarLayout.grid
-                    ? _buildResultsGrid()
-                    : _buildResultsList();
-              },
-            ),
-          ),
+          Expanded(child: widget.carLayout == CarLayout.grid ? _buildResultsGrid() : _buildResultsList()),
         ],
       ),
     );
@@ -784,78 +633,18 @@ class _VehicleSearchPageState extends State<VehicleSearchPage> {
 
   @override
   void dispose() {
-    super.dispose();
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     _productsSearcher.dispose();
     _filterState.dispose();
-    [_drivingcategoryFacetList, _makeFacetList, _modelFacetList, _colorFacetList, _yrFacetList, _bodytypeFacetList]
-        .forEach((f) => f.dispose());
     _pagingController.dispose();
-
-  }
-
-}
-class _FacetDropdown extends StatelessWidget {
-  final List<SelectableFacet> facets;
-  final String title;
-  final ValueChanged<String?> onChanged;
-  final VoidCallback onClear;
-
-  const _FacetDropdown({
-    required this.facets,
-    required this.title,
-    required this.onChanged,
-    required this.onClear,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedFacet = facets.firstWhereOrNull((f) => f.isSelected);
-    final selectedValue = selectedFacet?.item.value;
-
-    print(selectedValue); // Debugging
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-          ),
-          child: DropdownButtonFormField<String>(
-            isExpanded: true,
-            value: selectedValue,
-            items: facets.map((f) => DropdownMenuItem(
-              value: f.item.value,
-              child: Text(f.item.value),
-            )).toList(),
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              contentPadding: EdgeInsets.symmetric(vertical: 12),
-              hintText: 'Select $title',
-            ),
-          ),
-        ),
-        if (selectedValue != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: OutlinedButton.icon(
-              icon: Icon(Icons.clear, size: 20),
-              label: Text("Clear Selection"),
-              onPressed: onClear,
-              style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: BorderSide(color: Colors.red)),
-            ),
-          ),
-      ],
-    );
+    _facetLists.values.forEach((f) => f.dispose());
+    super.dispose();
   }
 }
-extension _FirstWhereOrNullExtension<T> on List<T> {
+
+extension FirstWhereOrNullExtension<T> on List<T> {
   T? firstWhereOrNull(bool Function(T element) test) {
     for (var element in this) {
       if (test(element)) return element;

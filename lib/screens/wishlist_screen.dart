@@ -6,6 +6,8 @@ import '../services/api_service.dart';
 import '../widgets/VehicleCard.dart';
 
 class WishlistScreen extends StatefulWidget {
+  const WishlistScreen({Key? key}) : super(key: key); // ✅ Add this constructor
+
   @override
   _WishlistScreenState createState() => _WishlistScreenState();
 }

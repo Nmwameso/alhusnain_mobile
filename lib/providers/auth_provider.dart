@@ -50,8 +50,27 @@ class AuthProvider with ChangeNotifier {
         _currentUser = UserModel.fromFirebaseUser(user);
         notifyListeners();
 
-        // ✅ Get user location
-        Map<String, dynamic> locationData = await _getUserLocation();
+        Map<String, dynamic> locationData = {};
+
+        try {
+          locationData = await _getUserLocation();
+        } catch (e) {
+          // ⚠️ If getting location fails (user denied or other errors)
+          locationData = {
+            'city': 'Mombasa',
+            'latitude': -4.0435,
+            'longitude': 39.6682,
+          };
+          // ✅ Save in local storage that location is denied
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('location_denied', true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permission denied. Showing Mombasa vehicles only.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
 
         final response = await _sendUserDataToApi(user, locationData);
         _isLoading = false;
@@ -66,6 +85,7 @@ class AuthProvider with ChangeNotifier {
             ),
           );
         }
+
         return response;
       }
 
@@ -86,6 +106,7 @@ class AuthProvider with ChangeNotifier {
       return false;
     }
   }
+
 
   /// ✅ Get User Location (Latitude, Longitude, City, Area)
 

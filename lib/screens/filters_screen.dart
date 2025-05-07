@@ -4,6 +4,7 @@ import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import 'config.dart';
 import 'home_screen.dart';
 import 'search_screen.dart'; // Import VehicleSearchPage
+import '../services/api_service.dart';
 
 class FiltersScreen extends StatefulWidget {
   final CarLayout carLayout;
@@ -57,6 +58,20 @@ class _FiltersScreenState extends State<FiltersScreen> {
     final selectedValues = facetResults.map((facets) =>
     facets.firstWhereOrNull((f) => f.isSelected)?.item.value).toList();
 
+    // ✅ Log filter activity
+    final apiService = ApiService();
+    await apiService.logFilterActivity({
+      'driving_category': selectedValues[0],
+      'make': selectedValues[1],
+      'model': selectedValues[2],
+      'colour': selectedValues[3],
+      'year': selectedValues[4],
+      'body_type': selectedValues[5],
+      'fuel': selectedValues[6],
+      'drive': selectedValues[7],
+      'transmission': selectedValues[8],
+      'features': selectedValues[9],
+    });
     Navigator.push(
       context,
       MaterialPageRoute(

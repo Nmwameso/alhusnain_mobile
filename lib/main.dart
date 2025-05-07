@@ -6,39 +6,77 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:ah_customer/providers/auth_provider.dart';
 import 'package:ah_customer/providers/home_provider.dart';
 import 'package:ah_customer/providers/connectivity_provider.dart';
 import 'package:ah_customer/screens/home_screen.dart';
 import 'package:ah_customer/screens/login_screen.dart';
-import 'package:ah_customer/notifications/notification.dart';
 import 'dart:async';
 
-/// Global Navigator Key
+// Global Navigator Key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-/// Notification Setup Instance
-final NotificationSetUp notificationSetUp = NotificationSetUp();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  await notificationSetUp.initializeNotification();
+  await _initializeNotification();
 
-  // 🔹 Subscribe to a general topic for all users
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
   FirebaseMessaging.instance.subscribeToTopic('general_notifications');
-  runApp(MyApp());
+
+  runApp(const MyApp());
+}
+
+/// Background handler (must be top-level)
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print("📩 Background message received: ${message.messageId}");
+}
+
+/// Set up all notification handlers
+Future<void> _initializeNotification() async {
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print("📲 Foreground message: ${message.notification?.title}");
+    // Optionally show a dialog or local notification
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _handleNotificationTap(message);
+  });
+
+  RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) {
+    _handleNotificationTap(initialMessage);
+  }
+}
+
+/// Handle navigation on notification tap
+void _handleNotificationTap(RemoteMessage message) {
+  final data = message.data;
+  final vehicleId = data['vehicle_id'];
+
+  if (vehicleId != null) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => VehicleDetailsScreen(vehicleId: vehicleId),
+      ),
+    );
+  } else {
+    navigatorKey.currentState?.pushNamed('/home');
+  }
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => AuthProvider()),
-        ChangeNotifierProvider(
-          create: (context) => HomeProvider()..fetchHomeData(),
-        ),
+        ChangeNotifierProvider(create: (context) => HomeProvider()..fetchHomeData()),
         ChangeNotifierProvider(create: (context) => ConnectivityProvider()),
       ],
       child: MaterialApp(
@@ -46,7 +84,7 @@ class MyApp extends StatelessWidget {
         navigatorKey: navigatorKey,
         title: 'AL-HUSNAIN Motors',
         theme: ThemeManager.buildIOSTheme(),
-        home: SplashScreen(),
+        home: const SetupScreen(),
         routes: {
           '/home': (context) => HomeScreen(),
           '/login': (context) => LoginScreen(),
@@ -56,33 +94,69 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class SplashScreen extends StatefulWidget {
+class SetupScreen extends StatefulWidget {
+  const SetupScreen({super.key});
+
   @override
-  _SplashScreenState createState() => _SplashScreenState();
+  State<SetupScreen> createState() => _SetupScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SetupScreenState extends State<SetupScreen> {
+  bool _locationPermissionDenied = false;
+
   @override
   void initState() {
     super.initState();
-    _checkLoginStatus();
+    _performSetup();
   }
 
-  Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(seconds: 2));
-    final prefs = await SharedPreferences.getInstance();
-    bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  Future<void> _performSetup() async {
+    try {
+      await Future.delayed(const Duration(seconds: 1));
 
-    Navigator.pushReplacementNamed(
-      context,
-      isLoggedIn ? '/home' : '/login',
-    );
+      LocationPermission permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _locationPermissionDenied = true;
+      }
+
+      await FirebaseMessaging.instance.getToken();
+
+      final prefs = await SharedPreferences.getInstance();
+      bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
+
+      if (_locationPermissionDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Location access denied. Showing vehicles from Mombasa only.'),
+            backgroundColor: Colors.orange.shade700,
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: () => Geolocator.openAppSettings(),
+            ),
+          ),
+        );
+      }
+
+      Navigator.pushReplacementNamed(context, isLoggedIn ? '/home' : '/login');
+    } catch (e) {
+      print("Setup Error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Setup failed. Please restart the app.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -90,37 +164,59 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset(
-              'assets/logo.png',
-              width: 200,
-              height: 200,
-            ),
+            const CupertinoActivityIndicator(radius: 14),
             const SizedBox(height: 24),
-            Text(
-              'AL-HUSNAIN MOTORS LTD',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontSize: 20,
-                letterSpacing: 0.5,
-                color: colors.onBackground,
-              ),
+            const AnimatedText(),
+            const SizedBox(height: 24),
+            const Text(
+              "Getting your experience ready, hang tight...",
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text(
-                'Welcome to Premier Destination For Quality Vehicles in Kenya',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  color: colors.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 32),
-            const CupertinoActivityIndicator(radius: 14),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class AnimatedText extends StatefulWidget {
+  const AnimatedText({super.key});
+
+  @override
+  _AnimatedTextState createState() => _AnimatedTextState();
+}
+
+class _AnimatedTextState extends State<AnimatedText> {
+  int _dotCount = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) {
+        setState(() {
+          _dotCount = (_dotCount + 1) % 4;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Text(
+      'Setting up${'.' * _dotCount}',
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: colors.primary,
       ),
     );
   }

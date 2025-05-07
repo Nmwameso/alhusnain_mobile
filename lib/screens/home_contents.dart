@@ -264,7 +264,18 @@ class _HomeContentsState extends State<HomeContents> {
     ) ?? false; // Default to false if dialog is dismissed
   }
 
-  void _navigateToDetails(BuildContext context, Vehicle car) {
+  Future<void> _navigateToDetails(BuildContext context, Vehicle car) async {
+    final apiService = ApiService();
+
+    await apiService.logCustomerEvent(
+      eventType: 'viewed_vehicle_details',
+      metadata: {
+        'vehicle_id': car.vehicleId,
+        'make': car.makeName,
+        'model': car.modelName,
+        'stock_id': car.stockID,
+      },
+    );
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -737,7 +748,22 @@ class _HomeContentsState extends State<HomeContents> {
                         Positioned(
                           top: 8,
                           right: 8,
-                          child: FavoriteIcon(vehicleId: car.vehicleId),
+                          child: FavoriteIcon(
+                        vehicleId: car.vehicleId.toString(),
+                          onToggle: (isFavorited) async {
+                            final apiService = ApiService();
+                            await apiService.logCustomerEvent(
+                              eventType: isFavorited ? 'added_to_favorites' : 'removed_from_favorites',
+                              metadata: {
+                                'vehicle_id': car.vehicleId,
+                                'make': car.makeName,
+                                'model': car.modelName,
+                                'stock_id': car.stockID,
+                                'origin': 'Home', // optional context
+                              },
+                            );
+                          },
+                        ),
                         ),
                       ],
                     ),

@@ -4,7 +4,7 @@ import '../screens/filters_screen.dart';
 import '../screens/home_contents.dart';
 import '../screens/wishlist_screen.dart';
 import '../screens/search_screen.dart';
-import '../screens/direct_import_screen.dart'; // ✅ Import Direct Import Screen
+import '../screens/direct_import_screen.dart';
 import '../widgets/CustomDrawer.dart';
 
 enum CarLayout { grid, list }
@@ -21,15 +21,19 @@ class _HomeScreenState extends State<HomeScreen> {
   final double drawerWidth = 355;
 
   void _toggleDrawer() {
-    setState(() {
-      _isDrawerOpen = !_isDrawerOpen;
-    });
+    if (mounted) {
+      setState(() {
+        _isDrawerOpen = !_isDrawerOpen;
+      });
+    }
   }
 
   void _closeDrawer() {
-    setState(() {
-      _isDrawerOpen = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isDrawerOpen = false;
+      });
+    }
   }
 
   void _onItemTapped(int index) {
@@ -43,9 +47,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toggleLayout() {
-    setState(() {
-      _carLayout = _carLayout == CarLayout.grid ? CarLayout.list : CarLayout.grid;
-    });
+    if (mounted) {
+      setState(() {
+        _carLayout = _carLayout == CarLayout.grid ? CarLayout.list : CarLayout.grid;
+      });
+    }
   }
 
   void _showVehicleDialog() {
@@ -54,13 +60,16 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text("Find Your Vehicle", textAlign: TextAlign.center),
-          content: const Text("Would you like to use the Car Chooser or proceed directly to search?", textAlign: TextAlign.center),
+          content: const Text(
+            "Would you like to use the Car Chooser or proceed directly to search?",
+            textAlign: TextAlign.center,
+          ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => CarChooserScreen()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => CarChooserScreen()));
               },
               child: const Text("Use Car Chooser", textAlign: TextAlign.center),
             ),
@@ -69,13 +78,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pop(context);
                 final filters = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => FiltersScreen(carLayout: _carLayout, onToggleLayout: _toggleLayout)),
+                  MaterialPageRoute(
+                    builder: (_) => FiltersScreen(
+                      carLayout: _carLayout,
+                      onToggleLayout: _toggleLayout,
+                    ),
+                  ),
                 );
                 if (filters != null) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => VehicleSearchPage(
+                      builder: (_) => VehicleSearchPage(
                         selectedBrand: filters['selectedBrand'],
                         selectedModel: filters['selectedModel'],
                         selectedColor: filters['selectedColor'],
@@ -94,18 +108,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _getScreen(int index) {
+    switch (index) {
+      case 0:
+        return HomeContents(
+          key: const PageStorageKey('HomeContents'),
+          carLayout: _carLayout,
+          onToggleLayout: _toggleLayout,
+        );
+      case 1:
+        return VehicleSearchPage(
+          key: const PageStorageKey('Search'),
+          carLayout: _carLayout,
+          onToggleLayout: _toggleLayout,
+        );
+      case 2:
+        return WishlistScreen(key: const PageStorageKey('Wishlist'));
+      case 3:
+        return DirectImportScreen(key: const PageStorageKey('DirectImport'));
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _screens = [
-      HomeContents(carLayout: _carLayout, onToggleLayout: _toggleLayout),
-      VehicleSearchPage(carLayout: _carLayout, onToggleLayout: _toggleLayout),
-      WishlistScreen(),
-      DirectImportScreen(), // ✅ Added Direct Import Screen
-    ];
-
     return Stack(
       children: [
-        // 🔹 Custom Drawer
+        // Drawer
         Positioned(
           left: _isDrawerOpen ? 0 : -drawerWidth,
           top: 0,
@@ -116,17 +147,21 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
 
-        // 🔹 Main Content (Shrinks when drawer opens)
+        // Main content
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
-          transform: Matrix4.translationValues(_isDrawerOpen ? drawerWidth * 0.2 : 0, 0, 0),
+          transform: Matrix4.translationValues(
+            _isDrawerOpen ? drawerWidth * 0.2 : 0,
+            0,
+            0,
+          ),
           child: Transform.scale(
-            scale: _isDrawerOpen ? 0.65 : 1.0, // ✅ Smooth centered shrink effect
-            alignment: Alignment.center, // ✅ Ensures the shrink effect is centered
+            scale: _isDrawerOpen ? 0.65 : 1.0,
+            alignment: Alignment.center,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               decoration: BoxDecoration(
-                borderRadius: _isDrawerOpen ? BorderRadius.circular(20) : BorderRadius.zero, // ✅ Rounded Borders
+                borderRadius: _isDrawerOpen ? BorderRadius.circular(20) : BorderRadius.zero,
                 boxShadow: _isDrawerOpen
                     ? [
                   BoxShadow(
@@ -138,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : [],
               ),
               child: ClipRRect(
-                borderRadius: _isDrawerOpen ? BorderRadius.circular(30) : BorderRadius.zero, // ✅ Clipping the content
+                borderRadius: _isDrawerOpen ? BorderRadius.circular(30) : BorderRadius.zero,
                 child: Scaffold(
                   appBar: AppBar(
                     title: const Text('AL-HUSNAIN MOTORS'),
@@ -149,14 +184,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     actions: [
                       IconButton(
-                        icon: Icon(_carLayout == CarLayout.grid ? Icons.list : Icons.grid_view),
+                        icon: Icon(
+                          _carLayout == CarLayout.grid ? Icons.list : Icons.grid_view,
+                        ),
                         onPressed: _toggleLayout,
                         tooltip: 'Switch Layout',
                       ),
                     ],
                   ),
-                  body: _screens[_selectedIndex],
-
+                  body: _getScreen(_selectedIndex),
                   bottomNavigationBar: NavigationBar(
                     height: 70,
                     selectedIndex: _selectedIndex,
@@ -165,28 +201,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     elevation: 3,
                     labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
                     indicatorColor: Colors.green,
-                    destinations: [
-                      const NavigationDestination(
+                    destinations: const [
+                      NavigationDestination(
                         icon: Icon(Icons.home_outlined, size: 28),
                         selectedIcon: Icon(Icons.home, size: 28),
                         label: 'Home',
                       ),
-                      const NavigationDestination(
+                      NavigationDestination(
                         icon: Icon(Icons.directions_car_outlined, size: 28),
                         selectedIcon: Icon(Icons.directions_car, size: 28),
                         label: 'Vehicles',
                       ),
-                      const NavigationDestination(
+                      NavigationDestination(
                         icon: Icon(Icons.favorite_border, size: 28),
                         selectedIcon: Icon(Icons.favorite, size: 28, color: Colors.red),
                         label: 'Wishlist',
                       ),
-                      const NavigationDestination(
-                        icon: Icon(Icons.local_shipping_outlined, size: 28), // ✅ Added Direct Import Icon
+                      NavigationDestination(
+                        icon: Icon(Icons.local_shipping_outlined, size: 28),
                         selectedIcon: Icon(Icons.local_shipping, size: 28),
                         label: 'Direct Import',
                       ),
-
                     ],
                   ),
                 ),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import 'VehicleDetailsScreen.dart';
 import 'config.dart';
+import '../services/openai_service.dart';
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -15,110 +17,116 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  @override
+  void initState() {
+     _productsSearcher.responses.listen((response) {
+      if (mounted) setState(() {});
+    });
+    _productsSearcher.connectFilterState(_filterState);
+    super.initState();
+    _addBotMessage("👋 Welcome to Alhusnain Motors! My name is Nathan, your sales representative. How can I assist you today?");
+  }
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-
+  final OpenAIService _openAI = OpenAIService();
+  final _filterState = FilterState();
+  final int _pageSize = 8;
+  int _currentPageKey = 0;
   final HitsSearcher _productsSearcher = HitsSearcher(
     applicationID: AlgoliaConfig.applicationId,
     apiKey: AlgoliaConfig.apiKey,
     indexName: AlgoliaConfig.indexName,
   );
 
-  Map<String, String> _conversationState = {};
 
-  @override
-  void initState() {
-    super.initState();
-    _startChatWithAI();
-  }
+  bool _isLoading = false;
 
-  void _startChatWithAI() {
-    _addBotMessage("👋 Hello! I'm your AI assistant. What kind of car are you looking for?", quickReplies: [
-      "Find a car",
-      "Check latest models",
-      "Compare vehicles"
-    ]);
-  }
-
-  void _processUserMessage(String message) {
+  void _processUserMessage(String message) async {
     _addUserMessage(message);
-    message = message.toLowerCase().trim();
+    _setLoading(true);
 
-    if (!_conversationState.containsKey('make')) {
-      _conversationState['make'] = message;
-      _addBotMessage("Got it! Which model are you interested in?");
-      return;
-    }
+    try {
+      // Send natural message and receive clean query string (e.g. "Toyota Vitz White 2018+")
+      final aiQuery = await _openAI.sendMessage(message);
 
-    if (!_conversationState.containsKey('model')) {
-      _conversationState['model'] = message;
-      _addBotMessage("Do you prefer Petrol or Diesel?");
-      return;
-    }
+      // Basic check in case of OpenAI errors
+      if (aiQuery.startsWith("❌") || aiQuery.startsWith("⚠️")) {
+        _addBotMessage("🚫 AI Error: $aiQuery");
+        return;
+      }
 
-    if (!_conversationState.containsKey('fuelType')) {
-      _conversationState['fuelType'] = message;
-      _addBotMessage("Do you have a preferred color?");
-      return;
-    }
+      final query = aiQuery.trim();
 
-    if (!_conversationState.containsKey('color')) {
-      _conversationState['color'] = message;
-      _searchFilteredVehicles();
-      return;
-    }
-  }
+      // Let user know what’s being searched
+      _addBotMessage("🔍 Searching for: *$query*");
 
-  void _searchFilteredVehicles() {
-    _addBotMessage("🔍 Searching for the perfect car...", isThinking: true);
-
-    Future.delayed(const Duration(seconds: 2), () async {
-      _productsSearcher.applyState(
-            (state) => state.copyWith(
-          query: "${_conversationState['make']} ${_conversationState['model']} ${_conversationState['fuelType']} ${_conversationState['color']}",
-          hitsPerPage: 8,
-        ),
-      );
+      // Apply query directly to Algolia
+      _productsSearcher.applyState((state) => state.copyWith(
+        query: query,
+        page: _currentPageKey,
+        hitsPerPage: _pageSize,
+      ));
 
       final response = await _productsSearcher.responses.first;
+      final isLastPage = response.hits.length < _pageSize;
 
-      setState(() {
-        _messages.removeWhere((m) => (m['isThinking'] ?? false) == true);
-
-        if (response.hits.isNotEmpty) {
-          _addBotMessage("✅ I found the perfect match for you!", vehicles: response.hits);
-        } else {
-          _addBotMessage("⚠️ Sorry, I couldn't find an exact match. Would you like to contact support?", quickReplies: ["Yes, Contact Support"]);
-        }
-      });
-
-      _conversationState.clear();
-    });
+      if (response.hits.isNotEmpty) {
+        _addBotMessage("✅ Here are some results for *$query*:", vehicles: response.hits);
+        if (!isLastPage) _currentPageKey += 1;
+      } else {
+        _addBotMessage("😕 No results found for *$query*. Want to try a different make or model?");
+      }
+    } catch (e) {
+      _addBotMessage("❗ Couldn't process your request. Please try again.");
+      debugPrint("AI or Query Error: $e");
+    } finally {
+      _setLoading(false);
+    }
   }
 
-  void _addBotMessage(String text, {bool isThinking = false, List<String>? quickReplies, List<Hit>? vehicles}) {
+
+  void _addBotMessage(String text, {List<Hit>? vehicles}) {
     setState(() {
       _messages.add({
         'text': text,
         'isUser': false,
-        'isThinking': isThinking,
-        'quickReplies': quickReplies,
         'vehicles': vehicles,
         'timestamp': DateTime.now(),
       });
     });
+    _scrollToBottom();
   }
 
   void _addUserMessage(String text) {
     setState(() {
-      _messages.add({'text': text, 'isUser': true, 'timestamp': DateTime.now()});
+      _messages.add({
+        'text': text,
+        'isUser': true,
+        'timestamp': DateTime.now(),
+      });
       _controller.clear();
     });
+    _scrollToBottom();
 
     if (text.toLowerCase().contains("contact support")) {
       _sendToWhatsApp();
     }
+  }
+
+  void _setLoading(bool loading) {
+    setState(() => _isLoading = loading);
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _sendToWhatsApp() async {
@@ -146,8 +154,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(Map<String, dynamic> message) {
     bool isUser = message['isUser'] ?? false;
-    bool isThinking = message['isThinking'] ?? false;
-    String time = DateFormat('HH:mm a').format(message['timestamp'] ?? DateTime.now());
+    String time = DateFormat('hh:mm a').format(message['timestamp'] ?? DateTime.now());
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -161,35 +168,17 @@ class _ChatScreenState extends State<ChatScreen> {
               color: isUser ? Colors.blueAccent : Colors.grey[200],
               borderRadius: BorderRadius.circular(15),
             ),
-            child: isThinking
-                ? SpinKitThreeBounce(color: Colors.black54, size: 18)
-                : Text(
+            child: Text(
               message['text'] ?? "Unknown message",
               style: TextStyle(color: isUser ? Colors.white : Colors.black),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(left: 12, right: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(time, style: TextStyle(fontSize: 10, color: Colors.grey)),
           ),
           if (message['vehicles'] != null) _buildVehicleList(message['vehicles']),
-          if (message['quickReplies'] != null) _buildQuickReplies(message['quickReplies']),
         ],
-      ),
-    );
-  }
-
-  Widget _buildQuickReplies(List<String> replies) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, top: 5),
-      child: Wrap(
-        spacing: 10,
-        children: replies
-            .map((reply) => ElevatedButton(
-          onPressed: () => _processUserMessage(reply),
-          child: Text(reply),
-        ))
-            .toList(),
       ),
     );
   }
@@ -225,11 +214,25 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(title: const Text('AI Chat Assistant')),
       body: Column(
         children: [
-          Expanded(child: ListView.builder(controller: _scrollController, itemCount: _messages.length, itemBuilder: (context, index) => _buildMessageBubble(_messages[index]))),
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: _messages.length,
+              itemBuilder: (context, index) => _buildMessageBubble(_messages[index]),
+            ),
+          ),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: SpinKitThreeBounce(color: Colors.black54, size: 18),
+            ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
-              children: [Expanded(child: TextField(controller: _controller, onSubmitted: _processUserMessage)), IconButton(icon: const Icon(Icons.send), onPressed: () => _processUserMessage(_controller.text))],
+              children: [
+                Expanded(child: TextField(controller: _controller, onSubmitted: _processUserMessage)),
+                IconButton(icon: const Icon(Icons.send), onPressed: () => _processUserMessage(_controller.text)),
+              ],
             ),
           ),
         ],

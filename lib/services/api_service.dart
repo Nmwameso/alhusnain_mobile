@@ -7,7 +7,7 @@ import 'package:ah_customer/providers/auth_provider.dart';
 import '../models/vehicle_details.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 class ApiService {
-  final String baseUrl = 'https://alhusnainmotors.co.ke/api/customer';
+  final String baseUrl = 'https://9db2-197-232-248-100.ngrok-free.app/api/customer';
 
   /// Fetch Home Data from API
   Future<HomeData> fetchHomeData() async {
@@ -263,6 +263,70 @@ class ApiService {
       throw Exception('Failed to fetch direct import requests: ${response.body}');
     }
   }
+
+
+  /// Log customer event to backend
+  Future<bool> logCustomerEvent({
+    required String eventType,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/event-log'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'event_type': eventType,
+        'metadata': metadata ?? {},
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print("✅ Event '$eventType' logged successfully");
+      return true;
+    } else {
+      print("❌ Failed to log event: ${response.body}");
+      return false;
+    }
+  }
+
+  Future<bool> logFilterActivity(Map<String, String?> filters) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('api_token');
+
+    if (token == null || token.isEmpty) {
+      throw Exception('User is not authenticated');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/filter-log'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'filters': filters,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print("✅ Filters logged successfully");
+      return true;
+    } else {
+      print("❌ Failed to log filters: ${response.body}");
+      return false;
+    }
+  }
+
+
 
 
 
