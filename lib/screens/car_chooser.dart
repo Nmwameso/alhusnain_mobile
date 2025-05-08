@@ -334,10 +334,10 @@ class _CarChooserScreenState extends State<CarChooserScreen> {
           min: 300,
           max: 6000,
           divisions: 50,
-          labels: RangeLabels(_selectedEngineRange.start.round().toString(), _selectedEngineRange.end.round().toString()),
+          labels: RangeLabels(_selectedEngineRange.start.toString(), _selectedEngineRange.end.toString()),
           onChanged: (values) => setState(() => _selectedEngineRange = values),
           activeColor: Theme.of(context).primaryColor,
-          inactiveColor: Colors.grey[200],
+          inactiveColor: Theme.of(context).primaryColor,
         ),
       ],
     );
